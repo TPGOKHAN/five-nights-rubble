@@ -2,10 +2,13 @@ import * as THREE from 'three';
 import { G } from './state.js';
 import * as SFX from './audio.js';
 import { subtitle } from './ui.js';
+import { t } from './i18n.js';
+import { bump } from './save.js';
 
 export const PLAYER_POS = new THREE.Vector3(0, 1.7, 13);
 
-// Waypoints: p = [x, y, z] (y = floor offset), cam = camera index that sees this spot
+// Waypoints: p = [x, y, z], cam = camera index that sees this spot,
+// dir = i18n key for the direction cue at attack nodes
 export const WP = {
   stageL:    { p: [-3.5, 0.8, -12.5], cam: 0 },
   stageC:    { p: [0,    0.8, -12.8], cam: 0 },
@@ -17,9 +20,9 @@ export const WP = {
   eastHall:  { p: [7,    0,    7],    cam: 5 },
   kitchen:   { p: [13,   0,   -6],    cam: 6 },
   parts:     { p: [13,   0,    3],    cam: 7 },
-  attackW:   { p: [-2.6, 0,   10.3],  cam: 1, dir: 'to your LEFT' },
-  attackE:   { p: [2.6,  0,   10.3],  cam: 1, dir: 'to your RIGHT' },
-  attackC:   { p: [0,    0,   10.0],  cam: 1, dir: 'RIGHT IN FRONT of you' }
+  attackW:   { p: [-2.6, 0,   10.3],  cam: 1, dir: 'dirLeft' },
+  attackE:   { p: [2.6,  0,   10.3],  cam: 1, dir: 'dirRight' },
+  attackC:   { p: [0,    0,   10.0],  cam: 1, dir: 'dirFront' }
 };
 
 export const hooks = {
@@ -28,6 +31,8 @@ export const hooks = {
 };
 
 function rand([a, b]) { return a + Math.random() * (b - a); }
+
+let kitchenCued = false;
 
 // ---------- model building (all primitives) ----------
 function mat(c, extra = {}) {
@@ -56,13 +61,14 @@ function buildBody(kind, color) {
     const head = limb(0.46, 0.5, 0.5, metal); head.position.y = 2.5;
     const jaw = limb(0.4, 0.14, 0.4, mat(0x22262c, { metalness: 0.9 })); jaw.position.set(0, 2.22, 0.06);
     g.add(legL, legR, spine, ribs, armL, armR, head, jaw);
-    // bright night-vision eyes — always emissive, visible on cameras
     const eyeGeo = new THREE.SphereGeometry(0.07, 8, 8);
     const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 3.2 });
     const eL = new THREE.Mesh(eyeGeo, eyeMat); eL.position.set(-0.13, 2.56, 0.24);
     const eR = eL.clone(); eR.position.x = 0.13;
     g.add(eL, eR);
     g.userData.eyes = [eL, eR];
+    g.userData.arms = [armL, armR];
+    g.userData.jaw = jaw;
     g.userData.headY = 2.5;
     return g;
   }
@@ -76,9 +82,9 @@ function buildBody(kind, color) {
   const armL = limb(0.28, 1.05, 0.3, bodyMat); armL.position.set(-0.72, 1.72, 0); armL.rotation.z = 0.12;
   const armR = armL.clone(); armR.position.x = 0.72; armR.rotation.z = -0.12;
   const head = limb(0.82, 0.74, 0.74, bodyMat); head.position.y = 2.68;
-  g.add(legL, legR, torso, belly, armL, armR, head);
+  const jaw = limb(0.56, 0.16, 0.5, darkMat); jaw.position.set(0, 2.33, 0.16);
+  g.add(legL, legR, torso, belly, armL, armR, head, jaw);
 
-  // eyes (glow toggled by state)
   const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8);
   const mkEye = () => new THREE.Mesh(eyeGeo, new THREE.MeshStandardMaterial({
     color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.0
@@ -87,6 +93,8 @@ function buildBody(kind, color) {
   const eR = mkEye(); eR.position.set(0.19, 2.74, 0.38);
   g.add(eL, eR);
   g.userData.eyes = [eL, eR];
+  g.userData.arms = [armL, armR];
+  g.userData.jaw = jaw;
   g.userData.headY = 2.7;
 
   if (kind === 'bonnie') {
@@ -110,7 +118,6 @@ function buildBody(kind, color) {
     const patch = limb(0.2, 0.12, 0.03, mat(0x111111)); patch.position.set(-0.19, 2.74, 0.4);
     const hook = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.3, 6), mat(0xb9c2cc, { metalness: 0.9, roughness: 0.3 }));
     hook.position.set(0.72, 1.12, 0.12); hook.rotation.x = Math.PI;
-    // torn suit: exposed endo shin
     legR.material = mat(0x30343a, { metalness: 0.9, roughness: 0.35 });
     g.add(earL, earR, snout, patch, hook);
   } else if (kind === 'freddy') {
@@ -127,7 +134,6 @@ function buildBody(kind, color) {
     g.add(earL, earR, muzzle, nose, hat, brim, bow);
   }
 
-  // battle damage: dark gashes
   for (let i = 0; i < 3; i++) {
     const gash = limb(0.18 + Math.random() * 0.2, 0.3, 0.05, mat(0x0d0d0d));
     gash.position.set((Math.random() - 0.5) * 0.8, 1.3 + Math.random() * 1.2, 0.34);
@@ -143,6 +149,7 @@ class Walker {
     this.name = name;
     this.kind = kind;
     this.path = path;
+    this.screechPitch = 1;
     this.mesh = buildBody(kind, color);
     scene.add(this.mesh);
     this.active = false;
@@ -155,12 +162,19 @@ class Walker {
     this.state = 'idle';
     this.moveTimer = rand(this.interval);
     this.attackTimer = 0;
+    this.attackWindow = 1;
     this.shine = 0;
     this.noticed = false;
     this.place();
     this.setEyes(0, 0xffffff);
-    // powered-down slump when inactive
+    this.resetPose();
     this.mesh.rotation.x = this.active ? 0 : 0.12;
+  }
+
+  resetPose() {
+    const u = this.mesh.userData;
+    if (u.arms) { u.arms[0].rotation.x = 0; u.arms[1].rotation.x = 0; }
+    if (u.jaw) { u.jaw.rotation.x = 0; u.jaw.position.y = u.jaw.userData?.baseY ?? u.jaw.position.y; }
   }
 
   activate(interval) {
@@ -226,6 +240,10 @@ class Walker {
         this.place();
         this.stepSound();
         hooks.blip();
+        if (this.path[this.idx] === 'kitchen') {
+          SFX.pots();
+          if (!kitchenCued) { kitchenCued = true; subtitle(t('sub_kitchen'), 4); }
+        }
         if (this.idx === this.path.length - 1) {
           this.enterAttack();
           this.onArriveAttack();
@@ -244,20 +262,21 @@ class Walker {
 }
 
 class Bonnie extends Walker {
+  constructor(...a) { super(...a); this.screechPitch = 0.8; }
   onArriveAttack() {
-    this.attackTimer = 7.5;
+    this.attackTimer = this.attackWindow = 7.5;
     SFX.growl(60);
-    subtitle('Heavy servos whir ' + this.wp().dir + '. Shine your light into its eyes!', 5);
+    subtitle(t('sub_bonnieNear', t(this.wp().dir)), 5);
   }
   updateAttack(dt, api) {
     this.attackTimer -= dt;
     if (api.aimedAt(this) && G.flashlight && !G.monitorUp) {
       this.shine += dt;
-      // eyes flare white as the light burns them
       this.setEyes(2.2 + this.shine * 3, 0xffeecc);
       if (this.shine >= 1.1) {
-        subtitle('The rabbit recoils, screeching, and drags itself back into the dark.', 4);
+        subtitle(t('sub_bonnieRepel'), 4);
         SFX.growl(90, 0.8);
+        bump('bonnieRepels');
         this.repel(2);
         return;
       }
@@ -270,18 +289,18 @@ class Bonnie extends Walker {
 }
 
 class Chica extends Walker {
+  constructor(...a) { super(...a); this.screechPitch = 1.15; }
   onArriveAttack() {
-    this.attackTimer = 9;
+    this.attackTimer = this.attackWindow = 9;
     this.noticed = false;
     SFX.cluck();
-    subtitle('Wet clicking ' + this.wp().dir + '. She is hungry. Kill your light and press F to toss food.', 5);
+    subtitle(t('sub_chicaNear', t(this.wp().dir)), 5);
   }
   updateAttack(dt, api) {
-    // if your beam is on her, she notices you — the window collapses fast
     if (api.aimedAt(this) && G.flashlight && !G.monitorUp) {
       if (!this.noticed) {
         this.noticed = true;
-        subtitle('She saw the light. She is coming FASTER. Turn it off and feed her!', 3.5);
+        subtitle(t('sub_chicaNoticed'), 3.5);
         SFX.cluck();
       }
       this.attackTimer -= dt * 2.5;
@@ -293,38 +312,42 @@ class Chica extends Walker {
   feed() {
     if (this.state !== 'attack') return false;
     if (G.food <= 0) {
-      subtitle('You claw at the empty bag. Nothing left.', 3);
+      subtitle(t('sub_chicaEmpty'), 3);
       return false;
     }
     if (G.flashlight) {
-      subtitle("Your light is ON — she'll see the throw. Kill it first.", 3);
+      subtitle(t('sub_chicaLightOn'), 3);
       return false;
     }
     G.food--;
     SFX.throwFood();
     SFX.cluck();
-    subtitle('You lob the rotten food into the dark. Wet crunching... then dragging footsteps, leaving.', 4);
-    this.repel(3, 1.6); // long, satisfied retreat
+    subtitle(t('sub_chicaFed'), 4);
+    bump('chicaFeeds');
+    // a full belly keeps her away for a long while — food is scarce,
+    // so each piece has to buy real time
+    this.repel(3, 4.0);
     return true;
   }
 }
 
 class Freddy extends Walker {
+  constructor(...a) { super(...a); this.screechPitch = 0.6; }
   onArriveAttack() {
-    this.attackTimer = 12;
+    this.attackTimer = this.attackWindow = 12;
     SFX.laugh();
-    subtitle('A deep chuckle ' + this.wp().dir + '. The bear. Lure him with AUDIO — fast.', 5);
+    subtitle(t('sub_freddyNear', t(this.wp().dir)), 5);
   }
   updateAttack(dt, api) {
     this.attackTimer -= dt;
     if (this.attackTimer <= 0) api.jumpscare(this);
   }
-  // returns true if the lure actually reached him
   audio(camIdx) {
     if (!this.active) return false;
     if (this.locCam() !== camIdx) return false;
     SFX.laugh();
-    subtitle('The bear turns toward the sound and lumbers away. It only buys time.', 4);
+    subtitle(t('sub_freddyLure'), 4);
+    bump('freddyLures');
     this.repel(2, 0.9);
     return true;
   }
@@ -334,6 +357,7 @@ class Foxy {
   constructor(scene) {
     this.name = 'Foxy';
     this.kind = 'foxy';
+    this.screechPitch = 1.35;
     this.mesh = buildBody('foxy', 0xa33b1f);
     scene.add(this.mesh);
     this.active = false;
@@ -341,7 +365,7 @@ class Foxy {
     this.reset();
   }
   reset() {
-    this.stage = 0;          // 0 hidden .. 3 = launches run
+    this.stage = 0;
     this.running = false;
     this.runT = 0;
     this.runDur = 7;
@@ -350,6 +374,9 @@ class Foxy {
     this.state = 'idle';
     this.place();
     this.setEyes(0);
+    const u = this.mesh.userData;
+    if (u.arms) { u.arms[0].rotation.x = 0; u.arms[1].rotation.x = 0; }
+    if (u.jaw) u.jaw.rotation.x = 0;
     SFX.runSteps(false);
   }
   activate(interval) { this.active = true; this.interval = interval; this.reset(); }
@@ -361,17 +388,15 @@ class Foxy {
     });
   }
   place() {
-    // creeps out of the cove curtain as stage rises
     const c = WP.cove.p;
     this.mesh.position.set(c[0] - 0.6 + this.stage * 0.55, 0, c[2] + this.stage * 0.35);
     const look = PLAYER_POS.clone(); look.y = 0;
     this.mesh.lookAt(look);
     this.mesh.rotation.x = this.active ? 0 : 0.12;
   }
-  // which camera currently sees him
   locCam() {
-    if (!this.running) return 3; // Pirate Cove
-    return this.runT < this.runDur * 0.55 ? 4 : 1; // West Hall, then Dining
+    if (!this.running) return 3;
+    return this.runT < this.runDur * 0.55 ? 4 : 1;
   }
   update(dt, api) {
     if (!this.active) return;
@@ -384,7 +409,7 @@ class Foxy {
         this.stage = 1;
         this.stageTimer = rand(this.interval);
         this.place();
-        subtitle('Behind its curtain, the fox stirs again.', 3);
+        subtitle(t('sub_foxyStir'), 3);
       }
       return;
     }
@@ -399,7 +424,7 @@ class Foxy {
           this.runT = 0;
           SFX.runSteps(true);
           SFX.growl(110, 0.7);
-          subtitle('SPRINTING FOOTSTEPS — the fox is coming! Flash it on the cameras!', 4);
+          subtitle(t('sub_foxyRun'), 4);
         } else {
           this.stageTimer = rand(this.interval);
           SFX.step(0.15, 70);
@@ -408,16 +433,14 @@ class Foxy {
       }
     } else {
       this.runT += dt;
-      const t = this.runT / this.runDur;
-      // path: cove -> west hall -> player
+      const tt = this.runT / this.runDur;
       const a = new THREE.Vector3(...WP.cove.p);
       const b = new THREE.Vector3(...WP.westHall.p);
       const c = new THREE.Vector3(PLAYER_POS.x - 0.5, 0, PLAYER_POS.z - 2.2);
-      const pos = t < 0.5 ? a.clone().lerp(b, t * 2) : b.clone().lerp(c, (t - 0.5) * 2);
+      const pos = tt < 0.5 ? a.clone().lerp(b, tt * 2) : b.clone().lerp(c, (tt - 0.5) * 2);
       this.mesh.position.copy(pos);
       const look = PLAYER_POS.clone(); look.y = 0;
       this.mesh.lookAt(look);
-      // gallop bob
       this.mesh.position.y = Math.abs(Math.sin(this.runT * 14)) * 0.18;
       this.setEyes(2.5, 0xffdd66);
       if (this.runT >= this.runDur) {
@@ -428,21 +451,24 @@ class Foxy {
   }
   flash(camIdx) {
     if (!this.active) return false;
+    if (this.stunTimer > 0) return false;
     if (this.locCam() !== camIdx) return false;
-    if (!this.running && this.stage === 0) return false; // hidden behind curtain
+    if (!this.running && this.stage === 0) return false;
     this.stunTimer = 30;
     SFX.runSteps(false);
     SFX.growl(140, 0.6);
-    subtitle('The flash burns its eyes — the fox seizes up. (30s)', 4);
+    subtitle(t('sub_foxyFlash'), 4);
+    bump('foxyFlashes');
     return true;
   }
 }
 
 class Endo extends Walker {
+  constructor(...a) { super(...a); this.screechPitch = 1.6; }
   onArriveAttack() {
-    this.attackTimer = 8;
+    this.attackTimer = this.attackWindow = 8;
     SFX.beep(false);
-    subtitle('Bare metal feet on tile, ' + this.wp().dir + '. ENDO-01 has found the debris. PROGRAM it or SHOCK it!', 5);
+    subtitle(t('sub_endoNear', t(this.wp().dir)), 5);
   }
   updateAttack(dt, api) {
     this.attackTimer -= dt;
@@ -452,10 +478,11 @@ class Endo extends Walker {
     if (!this.active) return false;
     if (this.locCam() !== camIdx) return false;
     SFX.beep(true);
-    subtitle('> ENDO-01 :: OVERRIDE ACCEPTED :: RETURNING TO PARTS/SERVICE', 4);
+    subtitle(t('sub_endoProg'), 4);
+    bump('endoPrograms');
     this.idx = 0;
     this.state = 'idle';
-    this.moveTimer = rand(this.interval) + 40; // dormant a while
+    this.moveTimer = rand(this.interval) + 40;
     this.setEyes(3.2, 0xffffff);
     this.place();
     hooks.blip();
@@ -484,9 +511,28 @@ const NIGHTS = {
 };
 
 export function setupNight(n) {
+  kitchenCued = false;
   const cfg = NIGHTS[n] || NIGHTS[5];
   Object.entries(CH).forEach(([key, ch]) => {
     if (cfg[key]) ch.activate(cfg[key]);
+    else ch.deactivate();
+  });
+}
+
+// Custom Night: aggression 0-10 per character → move interval.
+// 0 = inactive; 10 ≈ [5, 9] seconds between moves (merciless).
+export function aggToInterval(a) {
+  if (a <= 0) return null;
+  const lo = 22 - a * 1.7;
+  const hi = 32 - a * 2.3;
+  return [Math.max(4.5, lo), Math.max(8, hi)];
+}
+
+export function setupCustomNight(levels) {
+  kitchenCued = false;
+  Object.entries(CH).forEach(([key, ch]) => {
+    const iv = aggToInterval(levels[key] || 0);
+    if (iv) ch.activate(iv);
     else ch.deactivate();
   });
 }
@@ -496,6 +542,19 @@ export function updateChars(dt, api) {
 }
 
 export function freezeEyes() {
-  // controlled shock visual: eyes flicker out
   Object.values(CH).forEach((ch) => ch.setEyes(0.05, 0x8888ff));
+}
+
+// 0..1 threat level for the heartbeat
+export function dangerLevel() {
+  let d = 0;
+  Object.values(CH).forEach((ch) => {
+    if (!ch.active) return;
+    if (ch.running) d = Math.max(d, 1);
+    else if (ch.state === 'attack') {
+      d = Math.max(d, 0.65 + 0.35 * (1 - ch.attackTimer / (ch.attackWindow || 1)));
+    } else if (ch.stage >= 2) d = Math.max(d, 0.35);
+    else if (ch.idx >= ch.path?.length - 2 && ch.idx > 0) d = Math.max(d, 0.3);
+  });
+  return d;
 }

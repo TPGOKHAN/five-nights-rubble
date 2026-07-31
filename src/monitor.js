@@ -3,6 +3,8 @@ import { G } from './state.js';
 import * as SFX from './audio.js';
 import { CH } from './animatronics.js';
 import { subtitle, flashFx } from './ui.js';
+import { t } from './i18n.js';
+import { settings } from './settings.js';
 
 export const CAMS = [
   { id: 'CAM 1', name: 'SHOW STAGE', pos: [0, 3.6, -16.5], look: [0, 1.6, -11] },
@@ -33,12 +35,10 @@ export function initMonitor(scene) {
     return cam;
   });
 
-  // "night vision" boost only rendered while the monitor is up
   camLight = new THREE.AmbientLight(0x99ffbb, 1.4);
   camLight.visible = false;
   scene.add(camLight);
 
-  // cam selector buttons
   const grid = $('cambtns');
   CAMS.forEach((c, i) => {
     const b = document.createElement('button');
@@ -90,19 +90,22 @@ export function switchCam(i) {
 }
 
 export function blip() {
-  // an animatronic moved — static jolt if watching
   if (G.monitorUp) {
     burstT = Math.max(burstT, 0.3);
     SFX.staticBurst();
   }
 }
 
-function refreshButtons() {
+export function refreshButtons() {
   $('camname').textContent = CAMS[G.cam].id + ' — ' + CAMS[G.cam].name;
   document.querySelectorAll('.cambtn').forEach((b, i) => b.classList.toggle('active', i === G.cam));
-  $('act-flash').style.display = G.night >= 3 ? 'inline-block' : 'none';
+  $('act-flash').textContent = t('mon_flash');
+  $('act-audio').textContent = t('mon_audio');
+  $('act-program').textContent = t('mon_program');
+  $('mon-close').textContent = t('mon_close');
+  $('act-flash').style.display = G.monitorUnlocked ? 'inline-block' : 'none';
   $('act-audio').style.display = G.audioUnlocked ? 'inline-block' : 'none';
-  $('act-program').style.display = G.night >= 5 ? 'inline-block' : 'none';
+  $('act-program').style.display = G.programUnlocked ? 'inline-block' : 'none';
 }
 
 export function flashAction() {
@@ -111,7 +114,7 @@ export function flashAction() {
   flashFx('#ffffff', 140);
   SFX.buzz(0.25, 0.12);
   const hit = CH.foxy && CH.foxy.flash(G.cam);
-  if (!hit) subtitle('The camera flash pops. Nothing was there to blind.', 2.5);
+  if (!hit) subtitle(t('sub_flashMiss'), 2.5);
 }
 
 export function audioAction() {
@@ -119,16 +122,16 @@ export function audioAction() {
   audioCd = 6;
   SFX.lure();
   const hit = CH.freddy && CH.freddy.audio(G.cam);
-  if (!hit) subtitle('A tinny jingle plays from a far speaker. The bear ignores it — wrong camera.', 3);
+  if (!hit) subtitle(t('sub_freddyWrong'), 3);
 }
 
 export function programAction() {
-  if (!G.monitorUp || programCd > 0 || G.night < 5) return;
+  if (!G.monitorUp || programCd > 0 || !G.programUnlocked) return;
   programCd = 3;
   const hit = CH.endo && CH.endo.program(G.cam);
   if (!hit) {
     SFX.beep(false);
-    subtitle('> UPLINK FAILED :: TARGET NOT ON THIS FEED', 3);
+    subtitle(t('sub_progFail'), 3);
   }
 }
 
@@ -139,13 +142,15 @@ export function monitorTick(dt) {
   burstT = Math.max(0, burstT - dt);
   if (!G.monitorUp || !staticCtx) return;
 
-  // animated static noise
+  // animated static; the kitchen feed (cam 6) is half-broken and much noisier
   const img = staticCtx.createImageData(160, 96);
   const strong = burstT > 0;
+  const kitchenCam = G.cam === 6;
+  const baseAlpha = Math.round((kitchenCam ? 110 : 38) * settings.staticFx);
   for (let i = 0; i < img.data.length; i += 4) {
     const v = Math.random() * 255;
     img.data[i] = v; img.data[i + 1] = v; img.data[i + 2] = v;
-    img.data[i + 3] = strong ? 200 : 38;
+    img.data[i + 3] = strong ? 200 : baseAlpha;
   }
   staticCtx.putImageData(img, 0, 0);
 }

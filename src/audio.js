@@ -2,14 +2,58 @@
 let ctx = null;
 let master = null;
 let runInterval = null;
+let volume = 0.7;
+let danger = 0;          // 0..1 — drives the heartbeat
+let heartbeatTimer = null;
 
 export function initAudio() {
   if (ctx) { ctx.resume(); return; }
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   master = ctx.createGain();
-  master.gain.value = 0.55;
+  master.gain.value = volume * 0.8;
   master.connect(ctx.destination);
   ambience();
+  heartbeatLoop();
+}
+
+export function setVolume(v) {
+  volume = Math.max(0, Math.min(1, v));
+  if (master) master.gain.value = volume * 0.8;
+}
+
+export function suspendAudio() { if (ctx) ctx.suspend(); }
+export function resumeAudio() { if (ctx) ctx.resume(); }
+
+// danger level 0..1: heart beats faster and louder as threats close in
+export function setDanger(level) { danger = Math.max(0, Math.min(1, level)); }
+
+function heartbeatLoop() {
+  const schedule = () => {
+    const delay = danger > 0 ? 950 - danger * 500 : 400;
+    heartbeatTimer = setTimeout(() => {
+      if (danger > 0 && ctx && ctx.state === 'running') {
+        const vol = 0.10 + danger * 0.22;
+        thump(vol, 48);
+        setTimeout(() => thump(vol * 0.7, 40), 140);
+      }
+      schedule();
+    }, delay);
+  };
+  schedule();
+}
+
+function thump(vol, pitch) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(pitch, t);
+  o.frequency.exponentialRampToValueAtTime(25, t + 0.12);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  o.connect(g).connect(master);
+  o.start(t); o.stop(t + 0.16);
 }
 
 function noiseBuffer(dur = 1) {
@@ -165,15 +209,17 @@ export function lure() {
   });
 }
 
-export function screech() {
+// pitch: 1 = base. Bonnie 0.8 (deep), Chica 1.15 (shrill), Foxy 1.35 (ragged),
+// Freddy 0.6 (bassy), Endo 1.6 (metallic)
+export function screech(pitch = 1) {
   if (!ctx) return;
   const t = ctx.currentTime;
   const n = ctx.createBufferSource();
   n.buffer = noiseBuffer(1.1);
   const bp = ctx.createBiquadFilter();
   bp.type = 'bandpass';
-  bp.frequency.setValueAtTime(1600, t);
-  bp.frequency.linearRampToValueAtTime(2600, t + 0.5);
+  bp.frequency.setValueAtTime(1600 * pitch, t);
+  bp.frequency.linearRampToValueAtTime(2600 * pitch, t + 0.5);
   bp.Q.value = 1.5;
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.9, t);
@@ -183,14 +229,35 @@ export function screech() {
   for (let i = 0; i < 3; i++) {
     const o = ctx.createOscillator();
     o.type = 'sawtooth';
-    o.frequency.setValueAtTime(700 + i * 230, t);
-    o.frequency.linearRampToValueAtTime(1100 + i * 260, t + 0.6);
+    o.frequency.setValueAtTime((700 + i * 230) * pitch, t);
+    o.frequency.linearRampToValueAtTime((1100 + i * 260) * pitch, t + 0.6);
     o.detune.value = (i - 1) * 35;
     const og = ctx.createGain();
     og.gain.setValueAtTime(0.22, t);
     og.gain.linearRampToValueAtTime(0, t + 0.9);
     o.connect(og).connect(master);
     o.start(t); o.stop(t + 1);
+  }
+}
+
+// kitchen clatter: metallic pot impacts, heard when something prowls the kitchen
+export function pots() {
+  if (!ctx) return;
+  const t0 = ctx.currentTime;
+  const hits = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < hits; i++) {
+    const t = t0 + i * (0.12 + Math.random() * 0.2);
+    const n = ctx.createBufferSource();
+    n.buffer = noiseBuffer(0.25);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 900 + Math.random() * 2200;
+    bp.Q.value = 8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.12 + Math.random() * 0.1, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    n.connect(bp).connect(g).connect(master);
+    n.start(t);
   }
 }
 
