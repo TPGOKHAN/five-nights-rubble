@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Five Nights in the Rubble</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  body { font-family: 'Courier New', Courier, monospace; color: #cfc9bd; user-select: none; }
+  #app, #app canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* vignette */
+  #vignette {
+    position: absolute; inset: 0; pointer-events: none; z-index: 3;
+    background: radial-gradient(ellipse at center, transparent 42%, rgba(0,0,0,0.72) 100%);
+  }
+  #flashfx {
+    position: absolute; inset: 0; pointer-events: none; z-index: 40;
+    background: #fff; opacity: 0; transition: opacity 0.25s;
+  }
+
+  /* HUD */
+  #hud { position: absolute; inset: 0; pointer-events: none; z-index: 10; display: none; }
+  #nightlabel {
+    position: absolute; top: 18px; left: 22px; font-size: 20px; letter-spacing: 4px;
+    color: #d8d2c4; text-shadow: 0 0 8px #000;
+  }
+  #clock {
+    position: absolute; top: 18px; right: 22px; font-size: 26px; letter-spacing: 3px;
+    color: #d8d2c4; text-shadow: 0 0 8px #000;
+  }
+  #food {
+    position: absolute; top: 52px; right: 22px; font-size: 15px; letter-spacing: 2px;
+    color: #d8b95a; display: none;
+  }
+  #shock {
+    position: absolute; top: 76px; right: 22px; font-size: 14px; letter-spacing: 2px;
+    color: #557; display: none;
+  }
+  #shock.ready { color: #7fb0ff; text-shadow: 0 0 10px #2255ff; }
+  #torch {
+    position: absolute; bottom: 20px; left: 22px; font-size: 14px; letter-spacing: 2px; color: #665f52;
+  }
+  #torch.on { color: #ffe9a8; text-shadow: 0 0 10px #ffcc44; }
+  #stun {
+    position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+    font-size: 15px; letter-spacing: 3px; color: #7fb0ff; text-shadow: 0 0 12px #2255ff; display: none;
+  }
+  #crosshair {
+    position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; margin: -2px;
+    background: rgba(255,255,255,0.35); border-radius: 50%;
+  }
+  #subtitle {
+    position: absolute; bottom: 88px; left: 50%; transform: translateX(-50%);
+    max-width: 720px; width: 88%; text-align: center; font-size: 16px; line-height: 1.45;
+    color: #e8e2d2; text-shadow: 0 2px 6px #000, 0 0 14px #000;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none;
+  }
+  #subtitle.show { opacity: 1; }
+  #cambar {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 340px; padding: 10px 0 14px; text-align: center; font-size: 13px; letter-spacing: 5px;
+    color: #9aa; background: linear-gradient(transparent, rgba(20,30,40,0.6));
+    pointer-events: auto; cursor: pointer; display: none;
+  }
+  #cambar:hover { color: #dff; }
+
+  /* MONITOR */
+  #monitor {
+    position: absolute; inset: 0; z-index: 20; display: none;
+    box-shadow: inset 0 0 140px rgba(0,40,10,0.55);
+  }
+  #monitor.show { display: block; }
+  #monitor .tint {
+    position: absolute; inset: 0; pointer-events: none;
+    background: rgba(40, 255, 120, 0.05);
+  }
+  #monitor .scanlines {
+    position: absolute; inset: 0; pointer-events: none; opacity: 0.35;
+    background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,0.32) 2px 4px);
+  }
+  #staticnoise {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    image-rendering: pixelated; pointer-events: none; mix-blend-mode: screen;
+  }
+  #monframe {
+    position: absolute; inset: 8px; border: 3px solid rgba(120,255,170,0.25); pointer-events: none;
+  }
+  #camname {
+    position: absolute; top: 22px; left: 28px; font-size: 20px; letter-spacing: 3px;
+    color: #a8ffca; text-shadow: 0 0 10px #0f5;
+  }
+  #rec {
+    position: absolute; top: 24px; right: 34px; font-size: 14px; letter-spacing: 2px; color: #ff5555;
+    animation: blink 1.2s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.15; } }
+  #cambtns {
+    position: absolute; right: 26px; bottom: 26px; display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 6px; max-width: 300px;
+  }
+  .cambtn {
+    font-family: inherit; font-size: 11px; letter-spacing: 1px; text-align: left;
+    color: #9fd8b4; background: rgba(8, 26, 14, 0.82); border: 1px solid rgba(120,255,170,0.3);
+    padding: 6px 8px; cursor: pointer;
+  }
+  .cambtn span { display: block; font-size: 9px; color: #5a8a6a; }
+  .cambtn:hover { background: rgba(30, 70, 40, 0.9); }
+  .cambtn.active { background: rgba(60, 130, 80, 0.55); color: #eaffe0; border-color: #9fffc0; }
+  #actions {
+    position: absolute; left: 28px; bottom: 26px; display: flex; gap: 10px;
+  }
+  #actions button {
+    font-family: inherit; font-size: 14px; letter-spacing: 2px;
+    color: #dfffe8; background: rgba(10, 40, 20, 0.85); border: 2px solid rgba(140,255,180,0.5);
+    padding: 12px 18px; cursor: pointer;
+  }
+  #actions button:hover { background: rgba(40, 100, 55, 0.9); box-shadow: 0 0 16px rgba(80,255,140,0.35); }
+  #act-audio { border-color: rgba(255,220,120,0.55) !important; color: #fff3cf !important; }
+  #act-program { border-color: rgba(140,180,255,0.55) !important; color: #dfe8ff !important; }
+  #mon-close {
+    position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
+    font-family: inherit; font-size: 12px; letter-spacing: 4px; color: #9aa;
+    background: none; border: none; cursor: pointer; padding: 8px 20px;
+  }
+  #mon-close:hover { color: #dff; }
+
+  /* SCREENS */
+  #screen {
+    position: absolute; inset: 0; z-index: 50; display: none;
+    background: radial-gradient(ellipse at center, #10090b 0%, #030203 75%);
+    align-items: center; justify-content: center; text-align: center;
+  }
+  #screen.show { display: flex; }
+  #screen .inner { max-width: 680px; padding: 40px 28px; }
+  #screen h1 {
+    font-size: 52px; letter-spacing: 10px; line-height: 1.15; color: #b8262b;
+    text-shadow: 0 0 24px rgba(190, 30, 40, 0.55); margin-bottom: 10px;
+  }
+  #screen h2 { font-size: 30px; letter-spacing: 6px; color: #c8a25a; margin-bottom: 18px; }
+  #screen h2.death { color: #c0242a; text-shadow: 0 0 20px rgba(200,30,40,0.6); }
+  #screen h2.dawn, #screen h1.dawn { color: #b9c9e8; text-shadow: 0 0 22px rgba(140,170,255,0.4); }
+  #screen p { font-size: 15px; line-height: 1.65; margin: 12px 0; color: #b9b2a2; }
+  #screen p.sub { color: #776f60; font-size: 13px; letter-spacing: 2px; }
+  #screen p.tip {
+    text-align: left; display: inline-block; background: rgba(255,255,255,0.045);
+    border-left: 3px solid #b8262b; padding: 12px 16px; font-size: 13.5px; line-height: 1.8; color: #cfc9b8;
+  }
+  #screen b, #screen em { color: #e8dfc8; }
+  #screen-btn {
+    margin-top: 26px; font-family: inherit; font-size: 17px; letter-spacing: 4px;
+    color: #efe6d2; background: rgba(184, 38, 43, 0.16); border: 2px solid #b8262b;
+    padding: 14px 42px; cursor: pointer;
+  }
+  #screen-btn:hover { background: rgba(184, 38, 43, 0.42); box-shadow: 0 0 22px rgba(190,30,40,0.5); }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="vignette"></div>
+
+  <div id="hud">
+    <div id="nightlabel">NIGHT 1</div>
+    <div id="clock">12 AM</div>
+    <div id="food"></div>
+    <div id="shock"></div>
+    <div id="stun"></div>
+    <div id="torch">🔦 OFF</div>
+    <div id="crosshair"></div>
+    <div id="cambar">▲ CAMERAS ▲</div>
+  </div>
+  <div id="subtitle"></div>
+
+  <div id="monitor">
+    <div class="tint"></div>
+    <canvas id="staticnoise"></canvas>
+    <div class="scanlines"></div>
+    <div id="monframe"></div>
+    <div id="camname">CAM 1 — SHOW STAGE</div>
+    <div id="rec">● REC</div>
+    <div id="actions">
+      <button id="act-flash">⚡ FLASH [F]</button>
+      <button id="act-audio">♪ AUDIO [Q]</button>
+      <button id="act-program">▚ PROGRAM [P]</button>
+    </div>
+    <div id="cambtns"></div>
+    <button id="mon-close">▼ CLOSE ▼</button>
+  </div>
+
+  <div id="flashfx"></div>
+
+  <div id="screen">
+    <div class="inner">
+      <div id="screen-content"></div>
+      <button id="screen-btn">START</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
