@@ -254,9 +254,11 @@ class Chica extends Walker {
     SFX.cluck();
     subtitle(t('sub_chicaFed'), 4);
     bump('chicaFeeds');
-    // a full belly keeps her away for a long while — food is scarce,
-    // so each piece has to buy real time
-    this.repel(3, 4.0);
+    // A full belly keeps her away a long while — and the player controls how
+    // long: a quick, unnoticed feed buys up to ~5x her normal pace; a slow one
+    // ~3x; one she noticed (beam on her) a full step less. Skill saves food.
+    const quick = Math.max(0, this.attackTimer / this.attackWindow);
+    this.repel(3, 3.0 + 2.0 * quick - (this.noticed ? 1.0 : 0));
     return true;
   }
 }

@@ -72,7 +72,10 @@ export function pressScreenBtn() {
   }
 }
 
-export function briefHtml(n) { return t('brief' + Math.min(5, n)); }
+// on touch screens the briefs' keyboard instructions get a touch translation
+export function briefHtml(n) {
+  return t('brief' + Math.min(5, n)) + (touchMode ? '<p class="tip">' + t('touchTip') + '</p>' : '');
+}
 
 // Title screen with the full menu
 export function showTitleMenu(handlers) {

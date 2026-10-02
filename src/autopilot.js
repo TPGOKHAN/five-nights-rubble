@@ -33,38 +33,55 @@ function focusOn(ch) {
   return true;
 }
 
+// Human-like reaction: the bot only "notices" a new threat `react` seconds
+// (game time) after it appears — the time a person needs to hear it, find
+// the right camera and act. 0 = perfect play.
+let react = 0;
+const firstSeen = new Map();
+const gameTime = () => G.duration - G.timeLeft;
+function threat(ch, active) {
+  if (!active) { firstSeen.delete(ch); return false; }
+  if (!firstSeen.has(ch)) firstSeen.set(ch, gameTime());
+  return gameTime() - firstSeen.get(ch) >= react;
+}
+
 function strategyTick(FN) {
   const { bonnie, chica, foxy, freddy, endo } = CH;
   if (G.stunTimer > 0) { ensureMonitor(false); return; }
+
+  // gate each threat behind the reaction delay
+  const at = (c) => threat(c, !!(c && c.active && c.state === 'attack'));
+  const foxyRun = threat(foxy, !!(foxy && foxy.active && foxy.running && !(foxy.stunTimer > 0)));
+  const bonnieAt = at(bonnie), chicaAt = at(chica), freddyAt = at(freddy), endoAt = at(endo);
 
   const attacks = [bonnie, chica, freddy, endo].filter((c) => c && c.active && c.state === 'attack').length
     + (foxy && foxy.active && foxy.running ? 1 : 0);
 
   if (attacks >= 2 && G.shockUnlocked && G.shockCharges > 0) { FN.shock(); return; }
 
-  if (foxy && foxy.active && foxy.running) {
+  if (foxyRun) {
     ensureMonitor(true);
     if (focusOn(foxy)) MON.flashAction();
     return;
   }
-  if (endo && endo.active && endo.state === 'attack') {
+  if (endoAt) {
     ensureMonitor(true);
     if (focusOn(endo)) MON.programAction();
     return;
   }
-  if (bonnie && bonnie.active && bonnie.state === 'attack') {
+  if (bonnieAt) {
     ensureMonitor(false);
     aimAt(FN.camera, bonnie);
     G.flashlight = true;
     return;
   }
-  if (chica && chica.active && chica.state === 'attack') {
+  if (chicaAt) {
     ensureMonitor(false);
     G.flashlight = false;
     chica.feed();
     return;
   }
-  if (freddy && freddy.active && freddy.state === 'attack') {
+  if (freddyAt) {
     ensureMonitor(true);
     if (focusOn(freddy)) MON.audioAction();
     return;
@@ -175,6 +192,8 @@ export function attachAutopilot(FN) {
   FN.autoplay = (night, opts = {}) => new Promise((resolve) => {
     G.qa = true; // keep simulating while the tab is hidden; no auto-pause
     G.speed = opts.speed || 6;
+    react = opts.react || 0;
+    firstSeen.clear();
     if (opts.custom) FN.custom(opts.custom);
     else FN.start(night);
     const iv = setInterval(() => {

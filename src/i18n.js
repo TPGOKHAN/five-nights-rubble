@@ -49,6 +49,7 @@ const STR = {
       <p>Digging through the debris you found a torn bag of kitchen stock &mdash; <b>10 pieces</b> of rotten, reeking food. That's all there is. It has to last.</p>
       <p>The chick is awake now, and it is <em>hungry</em>.</p>
       <p class="tip">&#9656; When she comes close, <b>KILL YOUR LIGHT</b>, then press <b>F</b> to toss food. Feed her without her noticing you &mdash; if your beam is on her, she snaps.<br>
+      &#9656; The faster you feed her, the longer she stays away. Food is all you have.<br>
       &#9656; The rabbit still hates light in its eyes. Juggle both.</p>`,
     brief3: `<h2>NIGHT 3 &mdash; THE FOX</h2>
       <p>You pried a cracked <b>security monitor</b> out of the wreck. The camera grid still answers.</p>
@@ -172,7 +173,7 @@ const STR = {
     sub_freddyHome: 'The bear is already on the stage. The jingle changes nothing.',
     sub_endoHome: '> ENDO-01 ALREADY DOCKED IN PARTS/SERVICE',
     deathTip_bonnie: 'The rabbit hates light. When servos whir close, keep your beam on its EYES until it recoils.',
-    deathTip_chica: 'Light OFF, then F — she has to eat without seeing you. Your beam on her makes her come faster.',
+    deathTip_chica: 'Light OFF, then F — she has to eat without seeing you. Feed her fast: a quick meal keeps her away longer.',
     deathTip_foxy: 'Check Pirate Cove often. The moment you hear sprinting, find the fox on a camera and FLASH it.',
     deathTip_freddy: 'Find the bear on the cameras and play AUDIO on his feed. Keep pushing him back all night.',
     deathTip_endo: 'ENDO-01 sees in the dark. Find it on a camera and PROGRAM it home — or spend a SHOCK.',
@@ -182,6 +183,7 @@ const STR = {
     ctl_cams: 'TAB / RIGHT-CLICK cameras',
     ctl_shock: 'X shock',
     ctl_pause: 'ESC / P pause',
+    touchTip: 'On a touchscreen: drag anywhere to look around, and use the round buttons — 🔦 light · 🍕 feed · 📹 cameras · ⚡ shock · ❚❚ pause.',
     doc_title: 'Five Nights in the Rubble'
   },
 
@@ -216,6 +218,7 @@ const STR = {
       <p>Enkazı eşelerken yırtık bir mutfak torbası buldun &mdash; <b>10 parça</b> çürümüş, kokuşmuş yiyecek. Elindekinin hepsi bu. Yetmek zorunda.</p>
       <p>Civciv artık uyanık ve <em>aç</em>.</p>
       <p class="tip">&#9656; Yaklaştığında <b>IŞIĞINI SÖNDÜR</b> ve yiyecek fırlatmak için <b>F</b>'ye bas. Onu, seni fark etmeden besle &mdash; ışığın üzerindeyse saldırır.<br>
+      &#9656; Onu ne kadar çabuk beslersen o kadar uzun süre uzak kalır. Elindeki tek şey yiyecek.<br>
       &#9656; Tavşan hâlâ gözüne ışık tutulmasından nefret ediyor. İkisini birden idare et.</p>`,
     brief3: `<h2>3. GECE &mdash; TİLKİ</h2>
       <p>Enkazdan çatlak bir <b>güvenlik monitörü</b> söktün. Kamera ağı hâlâ cevap veriyor.</p>
@@ -339,7 +342,7 @@ const STR = {
     sub_freddyHome: 'Ayı zaten sahnede. Melodi hiçbir şeyi değiştirmiyor.',
     sub_endoHome: '> ENDO-01 ZATEN PARÇA/SERVİS\'TE',
     deathTip_bonnie: 'Tavşan ışıktan nefret eder. Servo sesleri yaklaşınca fenerini geri çekilene kadar GÖZLERİNDE tut.',
-    deathTip_chica: 'Önce ışığı KAPAT, sonra F — seni görmeden yemeli. Işığın üzerindeyse daha hızlı gelir.',
+    deathTip_chica: 'Önce ışığı KAPAT, sonra F — seni görmeden yemeli. Çabuk besle: hızlı bir öğün onu daha uzun uzak tutar.',
     deathTip_foxy: 'Korsan Koyu\'nu sık kontrol et. Koşu sesini duyduğun an tilkiyi bir kamerada bul ve FLAŞLA.',
     deathTip_freddy: 'Ayıyı kameralarda bul ve onun görüntüsünde SES çal. Bütün gece onu geri itmeye devam et.',
     deathTip_endo: 'ENDO-01 karanlıkta görür. Onu bir kamerada bulup PROGRAMLA — ya da bir ŞOK harca.',
@@ -349,6 +352,7 @@ const STR = {
     ctl_cams: 'TAB / SAĞ TIK kameralar',
     ctl_shock: 'X şok',
     ctl_pause: 'ESC / P duraklat',
+    touchTip: 'Dokunmatik ekranda: bakmak için ekranı sürükle, yuvarlak butonları kullan — 🔦 fener · 🍕 besle · 📹 kameralar · ⚡ şok · ❚❚ duraklat.',
     doc_title: 'Enkazda Beş Gece'
   }
 };
