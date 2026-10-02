@@ -45,6 +45,39 @@ function rand([a, b]) { return a + Math.random() * (b - a); }
 
 let kitchenCued = false;
 
+// ---------- rig helpers ----------
+function resetRig(ch) {
+  const u = ch.mesh.userData;
+  if (u.arms) u.arms.forEach((a) => { a.rotation.x = 0; });
+  if (u.jaw) u.jaw.rotation.x = 0;
+  if (u.head) u.head.rotation.set(0, 0, 0);
+  ch.twitch = null;
+}
+
+// Servo twitches: every few seconds the head snaps to a new angle, holds,
+// and snaps back — fast, not eased, like a machine that isn't quite right.
+// Characters at the debris twitch more often.
+export function animateRig(ch, dt) {
+  const head = ch.mesh.userData.head;
+  if (!head || !ch.active) return;
+  const close = ch.state === 'attack' || ch.running;
+  if (!ch.twitch) ch.twitch = { t: 2 + Math.random() * 6, hold: 0, y: 0, z: 0 };
+  const tw = ch.twitch;
+  tw.t -= dt;
+  if (tw.t <= 0) {
+    tw.t = close ? 0.8 + Math.random() * 1.6 : 4 + Math.random() * 8;
+    tw.hold = 0.35 + Math.random() * (close ? 0.5 : 1.2);
+    tw.y = (Math.random() - 0.5) * (close ? 0.5 : 0.8);
+    tw.z = (Math.random() - 0.5) * 0.45;
+  }
+  if (tw.hold > 0) tw.hold -= dt;
+  const ty = tw.hold > 0 ? tw.y : 0;
+  const tz = tw.hold > 0 ? tw.z : 0;
+  const k = Math.min(1, dt * 22);
+  head.rotation.y += (ty - head.rotation.y) * k;
+  head.rotation.z += (tz - head.rotation.z) * k;
+}
+
 // ---------- character classes ----------
 class Walker {
   constructor(name, kind, color, path, scene) {
@@ -73,11 +106,7 @@ class Walker {
     this.mesh.rotation.x = this.active ? 0 : 0.12;
   }
 
-  resetPose() {
-    const u = this.mesh.userData;
-    if (u.arms) { u.arms[0].rotation.x = 0; u.arms[1].rotation.x = 0; }
-    if (u.jaw) u.jaw.rotation.x = 0;
-  }
+  resetPose() { resetRig(this); }
 
   activate(interval) {
     this.active = true;
@@ -278,9 +307,7 @@ class Foxy {
     this.state = 'idle';
     this.place();
     this.setEyes(0);
-    const u = this.mesh.userData;
-    if (u.arms) { u.arms[0].rotation.x = 0; u.arms[1].rotation.x = 0; }
-    if (u.jaw) u.jaw.rotation.x = 0;
+    resetRig(this);
     SFX.runSteps(false);
   }
   activate(interval) { this.active = true; this.interval = interval; this.reset(); }
@@ -441,7 +468,10 @@ export function setupCustomNight(levels) {
 }
 
 export function updateChars(dt, api) {
-  Object.values(CH).forEach((ch) => ch.update(dt, api));
+  Object.values(CH).forEach((ch) => {
+    ch.update(dt, api);
+    if (!(ch.stunTimer > 0)) animateRig(ch, dt);
+  });
 }
 
 export function freezeEyes() {

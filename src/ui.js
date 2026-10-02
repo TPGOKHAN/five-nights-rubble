@@ -39,6 +39,7 @@ export function toast(achId) {
 // ---------------- narrative screens ----------------
 export function showScreen(html, btnText, onBtn) {
   const s = $('screen');
+  s.classList.remove('backdrop');
   $('screen-content').innerHTML = html;
   $('screen-menu').innerHTML = '';
   const b = $('screen-btn');
@@ -76,6 +77,7 @@ export function briefHtml(n) { return t('brief' + Math.min(5, n)); }
 // Title screen with the full menu
 export function showTitleMenu(handlers) {
   const s = $('screen');
+  s.classList.add('backdrop'); // the live 3D scene shows through
   $('screen-content').innerHTML = `
     <h1>${t('title')}</h1>
     <p class="sub">${t('tagline')}</p>

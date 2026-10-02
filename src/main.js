@@ -38,6 +38,12 @@ VISION.initVision(buildWorld(scene));
 initChars(scene);
 MON.initMonitor(scene);
 
+// warm work-light over the stage, only for the title backdrop
+const stageLight = new THREE.SpotLight(0xffd9a0, 0, 22, 0.55, 0.6, 1.3);
+stageLight.position.set(0, 7, -7.5);
+stageLight.target.position.set(0, 1.5, -12.8);
+scene.add(stageLight, stageLight.target);
+
 const torch = new THREE.SpotLight(0xfff2cc, 0, 34, 0.36, 0.45, 1.4);
 const torchTarget = new THREE.Object3D();
 scene.add(torch); scene.add(torchTarget);
@@ -341,6 +347,7 @@ function confirmScreen(msg, yesLabel, onYes, onNo) {
 }
 
 function briefNight(n) {
+  if (title.lit) { title.lit.setEyes(0, 0xffffff); title.lit = null; }
   G.phase = 'brief';
   G.night = n;
   G.isCustom = false;
@@ -357,6 +364,7 @@ function addMenuButton() {
 }
 
 function resetNightState() {
+  camera.position.copy(PLAYER_POS);
   G.timeLeft = G.duration;
   G.stunTimer = 0;
   G.flashlight = false;
@@ -388,6 +396,7 @@ function beginNight(n) {
 }
 
 function beginCustomNight() {
+  if (title.lit) { title.lit.setEyes(0, 0xffffff); title.lit = null; }
   SFX.initAudio();
   G.isCustom = true;
   G.monitorUnlocked = true;
@@ -649,6 +658,32 @@ function showEnd() {
   });
 }
 
+// ---------- title backdrop ----------
+// A slow dolly in the dining room toward the stage, where the three powered-
+// down mascots stand. Every few seconds one of them opens its eyes.
+const title = { t: 0, next: 3, lit: null, litFor: 0 };
+const STAGE_FOCUS = new THREE.Vector3(0, 2.3, -12.8);
+
+function updateTitleBackdrop(dt) {
+  title.t += dt;
+  camera.position.set(Math.sin(title.t * 0.05) * 1.6, 2.1 + Math.sin(title.t * 0.11) * 0.1, -3.2 + Math.sin(title.t * 0.035) * 0.8);
+  const d = STAGE_FOCUS.clone().sub(camera.position);
+  G.yaw = Math.atan2(-d.x, -d.z) + Math.sin(title.t * 0.07) * 0.04;
+  G.pitch = Math.atan2(d.y, Math.hypot(d.x, d.z));
+
+  title.next -= dt;
+  if (title.lit) {
+    title.litFor -= dt;
+    if (title.litFor <= 0) { title.lit.setEyes(0, 0xffffff); title.lit = null; }
+  } else if (title.next <= 0) {
+    const pick = [CH.bonnie, CH.chica, CH.freddy][Math.floor(Math.random() * 3)];
+    pick.setEyes(1.6, 0xff2a2a);
+    title.lit = pick;
+    title.litFor = 0.9 + Math.random() * 1.4;
+    title.next = 4 + Math.random() * 6;
+  }
+}
+
 // ---------- per-frame update ----------
 function updatePlay(dt) {
   G.timeLeft -= dt;
@@ -694,6 +729,8 @@ function frame() {
   if (G.phase === 'play') updatePlay(dt);
   else if (G.phase === 'jumpscare') updateJumpscare(dt);
   else if (G.phase === 'cutscene' && cut) updateCutscene(dt);
+  stageLight.intensity = G.phase === 'title' ? 60 : 0;
+  if (G.phase === 'title') updateTitleBackdrop(dt);
 
   camera.rotation.set(G.pitch, G.yaw, 0);
   if (G.phase === 'play') {
@@ -743,6 +780,7 @@ if (DEBUG) {
       resume: resumeGame,
       title: showTitle,
       camera,
+      renderer,
       vision: VISION,
       V: (x, y, z) => new THREE.Vector3(x, y, z)
     };

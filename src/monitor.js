@@ -21,6 +21,7 @@ export const CAMS = [
 let camObjs = [];
 let camLight = null;
 let staticCtx = null;
+let staticImg = null;
 let burstT = 0;
 let flashCd = 0;
 let audioCd = 0;
@@ -157,7 +158,9 @@ export function monitorTick(dt) {
   if (!G.monitorUp || !staticCtx) return;
 
   // animated static; the kitchen feed (cam 6) is half-broken and much noisier
-  const img = staticCtx.createImageData(160, 96);
+  // one buffer reused every frame (a fresh one per frame is ~4 MB/s of garbage)
+  if (!staticImg) staticImg = staticCtx.createImageData(160, 96);
+  const img = staticImg;
   const strong = burstT > 0;
   const kitchenCam = G.cam === 6;
   const baseAlpha = Math.round((kitchenCam ? 110 : 38) * settings.staticFx);

@@ -1,46 +1,48 @@
-# Sabah Yapılacaklar / Your Next Steps
+# Senin Yapacakların / Your Next Steps
 
-Oyun tamamlandı, doğrulandı ve commit'lendi. Senin yapman gerekenler kısa:
+**Oyun canlıda:** https://tpgokhan.github.io/five-nights-rubble/
+Repo (public): https://github.com/TPGOKHAN/five-nights-rubble
 
-## 1. Oyunu dene (2 dk)
+Yapılması zorunlu bir şey yok — oyun yayında ve çalışıyor. Aşağıdakiler senin
+kararın olan konular.
 
-```bash
-cd ~/Documents/ClaudeProjects/five-nights-rubble
-npm run dev
-```
+## 1. Oyna ve hisset (10 dk)
 
-→ http://localhost:8452 — tarayıcıda TR otomatik seçilir (tarayıcın Türkçe ise).
-Kulaklıkla dene; kalp atışı ve yön ipuçları (sol/sağ) oynanışın parçası.
+Canlı linki aç, kulaklık tak, 1. geceyi oyna. Özellikle şunlara bak:
+- Bonnie sola yaklaştığında gözlerini görebiliyor musun, fenerle geri püskürtmek
+  "adil" hissettiriyor mu?
+- 3. gecede Foxy koşarken kameradan bulup flaşlamak yetişilebilir mi?
 
-Hızlı test için: `http://localhost:8452/?night=5&t=90` (5. gece, 90 saniyelik).
+Hızlı test için (sadece sende çalışır, normal oyuncularda kapalı):
+`https://tpgokhan.github.io/five-nights-rubble/?debug&night=5&t=90`
 
-## 2. Karar ver: yayınlamak istiyor musun?
+## 2. Karar: daha fazla platform?
 
-Production build hazır ve test edildi (`npm run build` → `dist/`).
-Seçenekler — hangisini istersen söyle, kurulumunu yaparım:
+- **itch.io**: `npm run build` → `dist/` klasörünü zip'le, "HTML oyunu" olarak yükle.
+  Ayarlarda "Fullscreen button" ve "Mobile friendly" işaretle. (Hesap senin.)
+- **CrazyGames / Poki**: SDK entegrasyonu gerekir; istersen ben eklerim.
+  ⚠️ Bu portallar genelde **fan oyunlarını** (başkasının markası) kabul etmez.
 
-- **itch.io**: `dist/` klasörünü zip'leyip yüklemek yeterli (ücretsiz, en hızlı).
-- **CrazyGames**: Exit Interview'da yaptığımız gibi SDK entegrasyonu gerekir
-  (~yarım günlük iş; istersen ben eklerim).
-- **Kendi domain'in / Vercel-Netlify**: statik dosya, tek komutla çıkar.
+## 3. Yasal not (önemli)
 
-⚠️ Not: Bu bir FNaF hayran oyunu (Bonnie/Chica/Freddy/Foxy isimleri ve
-William Afton göndermesi). Scott Cawthon'un hayran oyunu politikası gereği
-**ücretsiz + "unofficial fan game" ibaresiyle** yayınlanmalı (oyun başlığı
-ekranında bu ibare zaten var). Ticari kullanma.
+Bu bir **FNaF hayran oyunu** (Freddy/Bonnie/Chica/Foxy isimleri, William Afton
+göndermesi). Scott Cawthon hayran oyunlarına genel olarak izin veriyor, ama:
+- **Ücretsiz** kalmalı — reklam, bağış duvarı, satış yok.
+- "Unofficial fan game" ibaresi kalmalı (başlık ekranında var).
+Ticari bir sürüm istersen karakterleri özgün tasarımlara çevirmemiz gerekir
+(sadece model/isim değişikliği; mekanikler aynen kalır).
 
-## 3. İsteğe bağlı iyileştirmeler (söylemen yeterli)
+## 4. Bilgisayar disk alanı
 
-- Jumpscare'lere kamera-önü özel animasyon varyantları (şu an ortak lunge +
-  kol/çene animasyonu var)
-- Gece 6 ("Nightmare" tek gece, hepsi 10) hikâye modu
-- Ses için gerçek kayıt/AI ses (şu an %100 sentez — bilinçli tercih, sıfır asset)
+Gece çalışırken diskin bir an tamamen dolduğunu gördüm (%99 dolu, ~11 GB boş).
+Claude uygulamasının konuşma geçmişi 6.5 GB, tarayıcı önbellekleri ~3 GB yer
+tutuyor. Ayarlar › Desktop app › Storage'dan önbelleği temizlemeni öneririm.
 
-## Teknik durum özeti
+## Teknik durum
 
-- 5 gece + Özel Gece, TR+EN, kayıt sistemi, 13 başarım, pause, ayarlar,
-  mobil dokunmatik — hepsi çalışıyor.
-- Otopilot botu 5 geceyi de optimal stratejiyle kazanabiliyor (denge doğrulandı);
-  sonuçlar README'de ve aşağıdaki komutla tekrarlanabilir:
-  `await FN.autoplay(5, {speed: 8})`
-- Git: `five-nights-rubble/` kendi repo'su; `main` branch, temiz working tree.
+- `npm test` → 32 kontrol (metin tabloları, kayıt kuralları, depolama hataları).
+- `FN.audit()` (debug) → her karakter her konumda bir kamerada görünür, saldırı
+  noktalarında gözler oyuncudan görünür, iki karakter üst üste binmez.
+- `FN.autoplay(n)` → bot 5 geceyi ve tüm-10 Özel Gece'yi kazanabiliyor
+  (sonuçlar commit mesajlarında).
+- Yayın: `npm run deploy` (önce testleri çalıştırır, kırmızıysa yayınlamaz).
