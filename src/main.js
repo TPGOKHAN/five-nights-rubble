@@ -15,6 +15,7 @@ import {
   recordDeath, recordNightSurvived, recordAbandon, bump
 } from './save.js';
 import * as VISION from './vision.js';
+import * as CUT from './cutscene.js';
 
 // ---------- boot: settings + save ----------
 loadSettings();
@@ -37,6 +38,7 @@ camera.rotation.order = 'YXZ';
 VISION.initVision(buildWorld(scene));
 initChars(scene);
 MON.initMonitor(scene);
+CUT.initCutscene(scene);
 
 // warm work-light over the stage, only for the title backdrop
 const stageLight = new THREE.SpotLight(0xffd9a0, 0, 22, 0.55, 0.6, 1.3);
@@ -528,7 +530,7 @@ function nightComplete() {
     return;
   }
   recordNightSurvived(G.night, G.food, false, false);
-  if (G.night >= 5) { startCutscene(); return; }
+  if (G.night >= 5) { MON.closeMonitor(); CUT.startCutscene(showEnd); return; }
   G.phase = 'nightdone';
   const next = G.night + 1;
   UI.showScreen(`
@@ -537,106 +539,6 @@ function nightComplete() {
     <p class="sub">${t('dawn_sub', G.night, 5 - G.night)}</p>
   `, t('btnNight', next), () => briefNight(next));
   addMenuButton();
-}
-
-// ---------- rescue cutscene ----------
-let cut = null;
-
-function makeHuman(color, hatColor) {
-  const g = new THREE.Group();
-  const mt = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.85, 0.3), mt); legs.position.y = 0.42;
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.75, 0.34), mt); body.position.y = 1.25;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.32, 0.3),
-    new THREE.MeshStandardMaterial({ color: 0xc9a58a, roughness: 0.9 })); head.position.y = 1.85;
-  g.add(legs, body, head);
-  if (hatColor !== undefined) {
-    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.14, 8),
-      new THREE.MeshStandardMaterial({ color: hatColor }));
-    hat.position.y = 2.06;
-    g.add(hat);
-  }
-  return g;
-}
-
-function startCutscene() {
-  G.phase = 'cutscene';
-  G.flashlight = false;
-  MON.closeMonitor();
-
-  const lineup = [CH.bonnie, CH.chica, CH.freddy, CH.foxy, CH.endo];
-  lineup.forEach((ch, i) => {
-    ch.active = false;
-    ch.mesh.position.set(-4 + i * 2.2, 0, 2);
-    ch.mesh.rotation.set(0, -Math.PI / 2, 0);
-    ch.setEyes(1.5, 0xff2222);
-  });
-
-  const officer = makeHuman(0x24345e, 0x16203c);
-  const afton = makeHuman(0x5a1a6e);
-  officer.position.set(-15, 0, 7);
-  afton.position.set(-16, 0, 8.5);
-  scene.add(officer, afton);
-
-  const beam = new THREE.SpotLight(0xffffff, 380, 40, 0.3, 0.4, 1.4);
-  beam.position.set(-14, 1.6, 7);
-  const beamTarget = new THREE.Object3D();
-  beamTarget.position.set(0, 1.5, 2);
-  scene.add(beam, beamTarget);
-  beam.target = beamTarget;
-
-  cut = { t: 0, officer, afton, beam, beamTarget, lineup, fired: new Set(), toppling: [] };
-  G.yaw = 0.8; G.pitch = 0;
-}
-
-function endCutscene() {
-  if (!cut) return;
-  scene.remove(cut.officer, cut.afton, cut.beam, cut.beamTarget);
-  cut = null;
-}
-
-const CUT_EVENTS = [
-  [0.5, () => UI.subtitle(t('cut1'), 4)],
-  [3.0, () => UI.subtitle(t('cut2'), 4)],
-  [5.0, () => UI.subtitle(t('cut3'), 4)],
-  [7.0, (c) => topple(c, 0)],
-  [8.2, (c) => topple(c, 1)],
-  [9.4, (c) => topple(c, 2)],
-  [10.6, (c) => topple(c, 3)],
-  [11.8, (c) => topple(c, 4)],
-  [13.2, () => UI.subtitle(t('cut4'), 4)],
-  [16.0, () => showEnd()]
-];
-
-function topple(c, i) {
-  const ch = c.lineup[i];
-  SFX.buzz(0.5, 0.35);
-  SFX.clank();
-  UI.flashFx('#ffffff', 90);
-  ch.setEyes(0, 0xffffff);
-  c.toppling.push({ mesh: ch.mesh, t: 0, dir: Math.random() < 0.5 ? 1 : -1 });
-}
-
-function updateCutscene(dt) {
-  cut.t += dt;
-  const walkT = Math.min(1, cut.t / 6);
-  cut.officer.position.lerpVectors(new THREE.Vector3(-15, 0, 7), new THREE.Vector3(-5, 0, 5), walkT);
-  cut.afton.position.lerpVectors(new THREE.Vector3(-16, 0, 8.5), new THREE.Vector3(-7, 0, 7), walkT);
-  cut.officer.position.y = Math.abs(Math.sin(cut.t * 6)) * 0.05;
-  cut.beam.position.copy(cut.officer.position).add(new THREE.Vector3(0, 1.6, 0));
-
-  CUT_EVENTS.forEach(([tt, fn], i) => {
-    if (cut && cut.t >= tt && !cut.fired.has(i)) { cut.fired.add(i); fn(cut); }
-  });
-  if (!cut) return;
-
-  cut.toppling.forEach((tp) => {
-    tp.t = Math.min(1, tp.t + dt * 1.4);
-    tp.mesh.rotation.z = tp.dir * tp.t * 1.45;
-    tp.mesh.position.y = -tp.t * 0.4;
-  });
-
-  G.yaw = 0.8 - cut.t * 0.02;
 }
 
 function showEnd() {
@@ -653,7 +555,7 @@ function showEnd() {
     G.food = 10;
     G.night = 1;
     G.n4bonusGiven = false;
-    endCutscene();
+    CUT.endCutscene();
     showTitle();
   });
 }
@@ -728,7 +630,7 @@ function frame() {
 
   if (G.phase === 'play') updatePlay(dt);
   else if (G.phase === 'jumpscare') updateJumpscare(dt);
-  else if (G.phase === 'cutscene' && cut) updateCutscene(dt);
+  else if (G.phase === 'cutscene') CUT.updateCutscene(dt);
   stageLight.intensity = G.phase === 'title' ? 60 : 0;
   if (G.phase === 'title') updateTitleBackdrop(dt);
 
@@ -774,7 +676,8 @@ if (DEBUG) {
       monitor: toggleMonitor,
       cam: MON.switchCam,
       win: () => { G.timeLeft = 0.01; },
-      cutscene: startCutscene,
+      cutscene: () => { MON.closeMonitor(); CUT.startCutscene(showEnd); },
+      cutSeek: CUT.seekCutscene,
       shock: doShock,
       pause: pauseGame,
       resume: resumeGame,

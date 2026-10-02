@@ -359,3 +359,45 @@ export function throwFood() {
   n.connect(g).connect(master);
   n.start(t);
 }
+
+// gunshot: sharp crack + low boom + room tail
+export function gunshot() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const n = ctx.createBufferSource();
+  n.buffer = noiseBuffer(0.6);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 700;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(1.0, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+  n.connect(hp).connect(g).connect(master);
+  n.start(t);
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(140, t);
+  o.frequency.exponentialRampToValueAtTime(38, t + 0.25);
+  const og = ctx.createGain();
+  og.gain.setValueAtTime(0.7, t);
+  og.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+  o.connect(og).connect(master);
+  o.start(t); o.stop(t + 0.4);
+}
+
+// electrical spark crackle when a machine is switched off by hand
+export function sparks() {
+  if (!ctx) return;
+  const t0 = ctx.currentTime;
+  for (let i = 0; i < 7; i++) {
+    const t = t0 + Math.random() * 0.5;
+    const n = ctx.createBufferSource();
+    n.buffer = noiseBuffer(0.05);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 3000;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.25, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    n.connect(hp).connect(g).connect(master);
+    n.start(t);
+  }
+}
