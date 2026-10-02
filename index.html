@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Five Nights in the Rubble</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  body { font-family: 'Courier New', Courier, monospace; color: #cfc9bd; user-select: none; -webkit-user-select: none; }
+  #app, #app canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  button { font-family: inherit; }
+
+  /* vignette */
+  #vignette {
+    position: absolute; inset: 0; pointer-events: none; z-index: 3;
+    background: radial-gradient(ellipse at center, transparent 42%, rgba(0,0,0,0.72) 100%);
+  }
+  #flashfx {
+    position: absolute; inset: 0; pointer-events: none; z-index: 40;
+    background: #fff; opacity: 0; transition: opacity 0.25s;
+  }
+
+  /* HUD */
+  #hud { position: absolute; inset: 0; pointer-events: none; z-index: 10; display: none; }
+  #nightlabel {
+    position: absolute; top: 18px; left: 22px; font-size: 20px; letter-spacing: 4px;
+    color: #d8d2c4; text-shadow: 0 0 8px #000;
+  }
+  #clock {
+    position: absolute; top: 18px; right: 22px; font-size: 26px; letter-spacing: 3px;
+    color: #d8d2c4; text-shadow: 0 0 8px #000;
+  }
+  #food {
+    position: absolute; top: 52px; right: 22px; font-size: 15px; letter-spacing: 2px;
+    color: #d8b95a; display: none;
+  }
+  #shock {
+    position: absolute; top: 76px; right: 22px; font-size: 14px; letter-spacing: 2px;
+    color: #557; display: none;
+  }
+  #shock.ready { color: #7fb0ff; text-shadow: 0 0 10px #2255ff; }
+  #torch {
+    position: absolute; bottom: 20px; left: 22px; font-size: 14px; letter-spacing: 2px; color: #665f52;
+  }
+  #torch.on { color: #ffe9a8; text-shadow: 0 0 10px #ffcc44; }
+  #stun {
+    position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+    font-size: 15px; letter-spacing: 3px; color: #7fb0ff; text-shadow: 0 0 12px #2255ff; display: none;
+  }
+  #crosshair {
+    position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; margin: -2px;
+    background: rgba(255,255,255,0.35); border-radius: 50%;
+  }
+  #subtitle {
+    position: absolute; bottom: 88px; left: 50%; transform: translateX(-50%);
+    max-width: 720px; width: 88%; text-align: center; font-size: 16px; line-height: 1.45;
+    color: #e8e2d2; text-shadow: 0 2px 6px #000, 0 0 14px #000;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 30;
+  }
+  #subtitle.show { opacity: 1; }
+  #cambar {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 340px; padding: 10px 0 14px; text-align: center; font-size: 13px; letter-spacing: 5px;
+    color: #9aa; background: linear-gradient(transparent, rgba(20,30,40,0.6));
+    pointer-events: auto; cursor: pointer; display: none;
+  }
+  #cambar:hover { color: #dff; }
+
+  /* achievement toast */
+  #toast {
+    position: absolute; top: 14px; left: 50%; transform: translate(-50%, -80px);
+    z-index: 60; background: rgba(20, 16, 8, 0.92); border: 1px solid #c8a25a;
+    padding: 10px 22px; font-size: 14px; color: #ffe9b0; text-align: center;
+    transition: transform 0.4s; pointer-events: none; letter-spacing: 1px;
+  }
+  #toast span { display: block; font-size: 11px; color: #b0a382; margin-top: 2px; letter-spacing: 0; }
+  #toast.show { transform: translate(-50%, 0); }
+
+  /* touch controls */
+  #touchui { position: absolute; inset: 0; pointer-events: none; z-index: 15; display: none; }
+  #touchui button {
+    position: absolute; pointer-events: auto; width: 64px; height: 64px; border-radius: 50%;
+    font-size: 26px; background: rgba(30,30,40,0.55); border: 2px solid rgba(255,255,255,0.25);
+    color: #fff;
+  }
+  #tch-torch { right: 20px; bottom: 96px; }
+  #tch-feed { right: 96px; bottom: 30px; }
+  #tch-cams { right: 20px; bottom: 176px; }
+  #tch-shock { right: 96px; bottom: 110px; }
+  #tch-pause { left: 16px; top: 52px; width: 46px !important; height: 46px !important; font-size: 18px !important; }
+
+  /* MONITOR */
+  #monitor {
+    position: absolute; inset: 0; z-index: 20; display: none;
+    box-shadow: inset 0 0 140px rgba(0,40,10,0.55);
+  }
+  #monitor.show { display: block; }
+  #monitor .tint { position: absolute; inset: 0; pointer-events: none; background: rgba(40, 255, 120, 0.05); }
+  #monitor .scanlines {
+    position: absolute; inset: 0; pointer-events: none; opacity: 0.35;
+    background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,0.32) 2px 4px);
+  }
+  #staticnoise {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    image-rendering: pixelated; pointer-events: none; mix-blend-mode: screen;
+  }
+  #monframe { position: absolute; inset: 8px; border: 3px solid rgba(120,255,170,0.25); pointer-events: none; }
+  #camname {
+    position: absolute; top: 22px; left: 28px; font-size: 20px; letter-spacing: 3px;
+    color: #a8ffca; text-shadow: 0 0 10px #0f5;
+  }
+  #rec {
+    position: absolute; top: 24px; right: 34px; font-size: 14px; letter-spacing: 2px; color: #ff5555;
+    animation: blink 1.2s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.15; } }
+  #cambtns {
+    position: absolute; right: 26px; bottom: 26px; display: grid;
+    grid-template-columns: repeat(2, minmax(110px, 1fr)); gap: 6px; max-width: 300px;
+  }
+  .cambtn {
+    font-size: 11px; letter-spacing: 1px; text-align: left;
+    color: #9fd8b4; background: rgba(8, 26, 14, 0.82); border: 1px solid rgba(120,255,170,0.3);
+    padding: 6px 8px; cursor: pointer;
+  }
+  .cambtn span { display: block; font-size: 9px; color: #5a8a6a; }
+  .cambtn:hover { background: rgba(30, 70, 40, 0.9); }
+  .cambtn.active { background: rgba(60, 130, 80, 0.55); color: #eaffe0; border-color: #9fffc0; }
+  #actions { position: absolute; left: 28px; bottom: 26px; display: flex; gap: 10px; flex-wrap: wrap; max-width: 46%; }
+  #actions button {
+    font-size: 14px; letter-spacing: 2px;
+    color: #dfffe8; background: rgba(10, 40, 20, 0.85); border: 2px solid rgba(140,255,180,0.5);
+    padding: 12px 18px; cursor: pointer;
+  }
+  #actions button:hover { background: rgba(40, 100, 55, 0.9); box-shadow: 0 0 16px rgba(80,255,140,0.35); }
+  #act-audio { border-color: rgba(255,220,120,0.55) !important; color: #fff3cf !important; }
+  #act-program { border-color: rgba(140,180,255,0.55) !important; color: #dfe8ff !important; }
+  #mon-close {
+    position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
+    font-size: 12px; letter-spacing: 4px; color: #9aa;
+    background: none; border: none; cursor: pointer; padding: 8px 20px;
+  }
+  #mon-close:hover { color: #dff; }
+
+  /* SCREENS */
+  #screen {
+    position: absolute; inset: 0; z-index: 50; display: none;
+    background: radial-gradient(ellipse at center, #10090b 0%, #030203 75%);
+    align-items: center; justify-content: center; text-align: center; overflow-y: auto;
+  }
+  #screen.show { display: flex; }
+  #screen .inner { max-width: 680px; padding: 40px 28px; }
+  #screen h1 {
+    font-size: clamp(30px, 7vw, 52px); letter-spacing: 10px; line-height: 1.15; color: #b8262b;
+    text-shadow: 0 0 24px rgba(190, 30, 40, 0.55); margin-bottom: 10px;
+  }
+  #screen h2 { font-size: clamp(20px, 5vw, 30px); letter-spacing: 6px; color: #c8a25a; margin-bottom: 18px; }
+  #screen h2.death { color: #c0242a; text-shadow: 0 0 20px rgba(200,30,40,0.6); }
+  #screen h2.dawn, #screen h1.dawn { color: #b9c9e8; text-shadow: 0 0 22px rgba(140,170,255,0.4); }
+  #screen p { font-size: 15px; line-height: 1.65; margin: 12px 0; color: #b9b2a2; }
+  #screen p.sub { color: #776f60; font-size: 13px; letter-spacing: 2px; }
+  #screen p.tip {
+    text-align: left; display: inline-block; background: rgba(255,255,255,0.045);
+    border-left: 3px solid #b8262b; padding: 12px 16px; font-size: 13.5px; line-height: 1.8; color: #cfc9b8;
+  }
+  #screen b, #screen em { color: #e8dfc8; }
+  #screen-btn {
+    margin-top: 26px; font-size: 17px; letter-spacing: 4px;
+    color: #efe6d2; background: rgba(184, 38, 43, 0.16); border: 2px solid #b8262b;
+    padding: 14px 42px; cursor: pointer;
+  }
+  #screen-btn:hover { background: rgba(184, 38, 43, 0.42); box-shadow: 0 0 22px rgba(190,30,40,0.5); }
+
+  /* menu buttons (title + pause + panels) */
+  #screen-menu { margin-top: 22px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .menubtn {
+    display: block; width: 320px; max-width: 86vw; font-size: 15px; letter-spacing: 3px;
+    color: #cfc9b8; background: rgba(255,255,255,0.05); border: 1px solid #5a5347;
+    padding: 12px 0; cursor: pointer; text-align: center;
+  }
+  .menubtn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  .menubtn.primary { border: 2px solid #b8262b; color: #efe6d2; background: rgba(184, 38, 43, 0.16); }
+  .menubtn.primary:hover { background: rgba(184, 38, 43, 0.42); box-shadow: 0 0 22px rgba(190,30,40,0.5); }
+  .menubtn.locked { opacity: 0.4; cursor: default; }
+  .langrow { display: flex; gap: 8px; margin-top: 6px; }
+  .langbtn {
+    font-size: 13px; letter-spacing: 2px; padding: 7px 18px; cursor: pointer;
+    color: #9a9384; background: rgba(255,255,255,0.05); border: 1px solid #4a4337;
+  }
+  .langbtn.active { color: #ffe9b0; border-color: #c8a25a; background: rgba(200,162,90,0.15); }
+
+  /* pause menu */
+  #pausemenu {
+    position: absolute; inset: 0; z-index: 55; display: none;
+    background: rgba(2, 2, 4, 0.82); backdrop-filter: blur(3px);
+    flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  }
+  #pausemenu.show { display: flex; }
+  #pausemenu h2 { font-size: 30px; letter-spacing: 8px; color: #c8a25a; margin-bottom: 18px; }
+
+  /* generic panel (settings / achievements / custom night) */
+  #panel {
+    position: absolute; inset: 0; z-index: 58; display: none;
+    background: rgba(3, 2, 4, 0.985); overflow-y: auto;
+  }
+  #panel.show { display: block; }
+  .panel-inner { max-width: 560px; margin: 6vh auto; padding: 24px; text-align: center; }
+  .panel-inner h2 { font-size: 26px; letter-spacing: 6px; color: #c8a25a; margin-bottom: 20px; }
+  .panel-inner p { font-size: 14px; line-height: 1.6; color: #b9b2a2; margin-bottom: 14px; }
+  .panel-inner p.sub { color: #776f60; font-size: 13px; letter-spacing: 2px; margin-top: 14px; }
+  .panel-inner .menubtn { margin: 8px auto 0; }
+  .setrow {
+    display: flex; align-items: center; gap: 12px; margin: 14px 0; text-align: left;
+  }
+  .setrow label { flex: 0 0 42%; font-size: 13.5px; letter-spacing: 1px; color: #cfc9b8; }
+  .setrow input[type="range"] { flex: 1; accent-color: #b8262b; }
+  .setrow span { min-width: 44px; font-size: 13px; color: #c8a25a; text-align: right; }
+  .togglebtn {
+    font-size: 13px; letter-spacing: 2px; padding: 7px 18px; cursor: pointer;
+    color: #ffe9b0; background: rgba(200,162,90,0.15); border: 1px solid #c8a25a;
+  }
+  .achlist { max-height: 52vh; overflow-y: auto; text-align: left; }
+  .achrow {
+    display: flex; gap: 12px; align-items: center; padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.07); opacity: 0.45;
+  }
+  .achrow.got { opacity: 1; }
+  .achrow .achicon { font-size: 22px; }
+  .achrow .achtext { font-size: 12.5px; line-height: 1.5; color: #b9b2a2; }
+  .achrow .achtext b { color: #e8dfc8; letter-spacing: 1px; }
+  .achrow.got .achtext b { color: #ffe9b0; }
+</style>
+  <script type="module" crossorigin src="/five-nights-rubble/assets/index-BRB8pYJM.js"></script>
+  <link rel="modulepreload" crossorigin href="/five-nights-rubble/assets/three-D6K7r6tP.js">
+</head>
+<body>
+  <div id="app"></div>
+  <div id="vignette"></div>
+
+  <div id="hud">
+    <div id="nightlabel">NIGHT 1</div>
+    <div id="clock">12 AM</div>
+    <div id="food"></div>
+    <div id="shock"></div>
+    <div id="stun"></div>
+    <div id="torch">🔦 OFF</div>
+    <div id="crosshair"></div>
+    <div id="cambar">▲ CAMERAS ▲</div>
+  </div>
+  <div id="subtitle"></div>
+  <div id="toast"></div>
+
+  <div id="touchui">
+    <button id="tch-pause">⏸</button>
+    <button id="tch-cams">📹</button>
+    <button id="tch-torch">🔦</button>
+    <button id="tch-shock">⚡</button>
+    <button id="tch-feed">🍕</button>
+  </div>
+
+  <div id="monitor">
+    <div class="tint"></div>
+    <canvas id="staticnoise"></canvas>
+    <div class="scanlines"></div>
+    <div id="monframe"></div>
+    <div id="camname">CAM 1 — SHOW STAGE</div>
+    <div id="rec">● REC</div>
+    <div id="actions">
+      <button id="act-flash">⚡ FLASH [F]</button>
+      <button id="act-audio">♪ AUDIO [Q]</button>
+      <button id="act-program">▚ PROGRAM [P]</button>
+    </div>
+    <div id="cambtns"></div>
+    <button id="mon-close">▼ CLOSE ▼</button>
+  </div>
+
+  <div id="flashfx"></div>
+
+  <div id="screen">
+    <div class="inner">
+      <div id="screen-content"></div>
+      <button id="screen-btn">START</button>
+      <div id="screen-menu"></div>
+    </div>
+  </div>
+
+  <div id="pausemenu"></div>
+  <div id="panel"></div>
+
+</body>
+</html>
