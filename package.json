@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:pages": "vite build --base /five-nights-rubble/ --outDir .pages-build --emptyOutDir",
+    "deploy": "npm run build:pages && touch .pages-build/.nojekyll && npx --yes gh-pages -d .pages-build -b gh-pages --dotfiles -m \"Deploy Five Nights in the Rubble to GitHub Pages\"",
     "preview": "vite preview"
   },
   "dependencies": {
