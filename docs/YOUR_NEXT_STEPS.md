@@ -23,7 +23,18 @@ Hızlı test için (sadece sende çalışır, normal oyuncularda kapalı):
 - **CrazyGames / Poki**: SDK entegrasyonu gerekir; istersen ben eklerim.
   ⚠️ Bu portallar genelde **fan oyunlarını** (başkasının markası) kabul etmez.
 
-## 3. Yasal not (önemli)
+## 3. Karar: zorluk
+
+Simülasyon sonuçları (bot, insan benzeri tepki gecikmesiyle):
+- 2 sn tepki → 10/10 gece kazanıldı; yiyecek sıkı (5. gece sonunda 1–3 kalıyor).
+- 3.5 sn tepki → 4. ve 5. geceler yine 5/5 kazanıldı.
+
+Yani kampanya **affedici ama adil**. Bot insandan avantajlı (korkmuyor, tüm
+kameraları "biliyor"), bu yüzden gerçek oyuncular için bunu doğru seviye olarak
+bıraktım; uzmanlar için Özel Gece (10'a kadar) var. Daha zor bir 4–5. gece
+istersen söyle — tek satırlık ayar (`NIGHTS` tablosu, src/animatronics.js).
+
+## 4. Yasal not (önemli)
 
 Bu bir **FNaF hayran oyunu** (Freddy/Bonnie/Chica/Foxy isimleri, William Afton
 göndermesi). Scott Cawthon hayran oyunlarına genel olarak izin veriyor, ama:
@@ -32,7 +43,7 @@ göndermesi). Scott Cawthon hayran oyunlarına genel olarak izin veriyor, ama:
 Ticari bir sürüm istersen karakterleri özgün tasarımlara çevirmemiz gerekir
 (sadece model/isim değişikliği; mekanikler aynen kalır).
 
-## 4. Bilgisayar disk alanı
+## 5. Bilgisayar disk alanı
 
 Gece çalışırken diskin bir an tamamen dolduğunu gördüm (%99 dolu, ~11 GB boş).
 Claude uygulamasının konuşma geçmişi 6.5 GB, tarayıcı önbellekleri ~3 GB yer
