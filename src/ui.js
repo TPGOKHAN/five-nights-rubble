@@ -58,6 +58,11 @@ export function hideScreen() {
   btnHandler = null;
 }
 
+// what Enter does on the current screen (e.g. "back" on a confirm prompt)
+export function setEnterHandler(fn) { btnHandler = fn; }
+
+export function panelOpen() { return $('panel').classList.contains('show'); }
+
 export function pressScreenBtn() {
   if (btnHandler) {
     const h = btnHandler;
@@ -149,6 +154,12 @@ export function hidePause() { $('pausemenu').classList.remove('show'); }
 
 // ---------------- panels (settings / achievements / custom night) ----------------
 export function hidePanel() { $('panel').classList.remove('show'); }
+
+// Escape closes whichever panel is open, via its own Back button
+export function closePanel() {
+  const b = $('panel-close');
+  if (panelOpen() && b) b.click();
+}
 
 export function showSettingsPanel(onClose, onLangChange) {
   const p = $('panel');
@@ -260,22 +271,60 @@ export function showCustomPanel(onStart, onClose) {
 }
 
 // ---------------- HUD ----------------
+let touchMode = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+export function usingTouch() { return touchMode; }
+
+// "⚡ FLASH [F]" -> "⚡ FLASH" on touch screens, where key hints mean nothing
+export function keyHint(label) {
+  return touchMode ? label.replace(/\s*\[[^\]]+\]/g, '') : label;
+}
+export function setTouchMode(v) { touchMode = !!v; }
+
+const LEGEND_SECONDS = 22;
+const HINT_MS = 9000;
+let hintSince = 0;
+
+function controlsLegend() {
+  const parts = [t('ctl_look'), t('ctl_torch')];
+  if (G.isCustom || G.night >= 2) parts.push(t('ctl_feed'));
+  if (G.monitorUnlocked) parts.push(t('ctl_cams'));
+  if (G.shockUnlocked) parts.push(t('ctl_shock'));
+  parts.push(t('ctl_pause'));
+  return parts.join('  ·  ');
+}
+
+function shockLabel() {
+  return G.shockCharges > 0 ? keyHint(t('hud_shock', G.shockCharges)) : t('hud_shock_empty');
+}
+
 export function updateHUD() {
-  const playing = G.phase === 'play' && !G.monitorUp;
+  const inPlay = G.phase === 'play';
+  const playing = inPlay && !G.monitorUp;
+  const touch = touchMode;
   $('hud').style.display = playing ? 'block' : 'none';
-  $('touchui').style.display = (G.phase === 'play' && isTouch()) ? 'block' : 'none';
+  $('touchui').style.display = (playing && touch) ? 'block' : 'none';
+  $('mon-pause').style.display = G.monitorUp ? 'block' : 'none';
+  document.body.classList.toggle('mon', G.monitorUp && inPlay); // lifts subtitles above the cam controls
+
+  if (G.monitorUp && inPlay) {
+    const parts = [clockLabel((G.duration - G.timeLeft) / G.duration)];
+    if (G.isCustom || G.night >= 2) parts.push(t('hud_food', G.food));
+    if (G.shockUnlocked) parts.push(shockLabel());
+    $('mon-info').textContent = parts.join('   ');
+  }
   if (!playing) return;
+
   $('nightlabel').textContent = G.isCustom ? t('hud_custom') : t('hud_night', G.night);
   $('clock').textContent = clockLabel((G.duration - G.timeLeft) / G.duration);
-  const food = $('food');
   const showFood = G.isCustom || G.night >= 2;
+  const food = $('food');
   food.style.display = showFood ? 'block' : 'none';
   if (showFood) food.textContent = t('hud_food', G.food);
   const shock = $('shock');
   shock.style.display = G.shockUnlocked ? 'block' : 'none';
   if (G.shockUnlocked) {
-    shock.textContent = G.shockCd > 0 ? t('hud_shock_cd', Math.ceil(G.shockCd)) : t('hud_shock_ready');
-    shock.classList.toggle('ready', G.shockCd <= 0);
+    shock.textContent = shockLabel();
+    shock.classList.toggle('ready', G.shockCharges > 0 && G.stunTimer <= 0);
   }
   $('torch').textContent = G.flashlight ? t('hud_torch_on') : t('hud_torch_off');
   $('torch').classList.toggle('on', G.flashlight);
@@ -283,8 +332,33 @@ export function updateHUD() {
   $('cambar').style.display = G.monitorUnlocked ? 'block' : 'none';
   $('stun').style.display = G.stunTimer > 0 ? 'block' : 'none';
   if (G.stunTimer > 0) $('stun').textContent = t('hud_stun', Math.ceil(G.stunTimer));
-}
 
-export function isTouch() {
-  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  // mouse players: say how to get the view back whenever the lock is off
+  // (shown for a few seconds each time the lock goes away, so drag-look
+  // players aren't left with a permanent label over the view)
+  const hint = $('lockhint');
+  const needLock = !touch && !document.pointerLockElement;
+  if (needLock && !hintSince) hintSince = performance.now();
+  if (!needLock) hintSince = 0;
+  const showHint = needLock && performance.now() - hintSince < HINT_MS;
+  hint.style.display = showHint ? 'block' : 'none';
+  if (showHint) hint.textContent = t('hint_lock');
+
+  // controls reminder for the first seconds of every night (desktop)
+  const legend = $('controls');
+  const age = (performance.now() - (G.nightStartedAt || 0)) / 1000;
+  legend.style.display = touch ? 'none' : 'block';
+  legend.classList.toggle('show', age < LEGEND_SECONDS);
+  if (age < LEGEND_SECONDS) legend.textContent = controlsLegend();
+
+  // touch buttons only for tools this night actually has
+  if (touch) {
+    $('tch-feed').style.display = (G.isCustom || G.night >= 2) ? 'block' : 'none';
+    $('tch-cams').style.display = G.monitorUnlocked ? 'block' : 'none';
+    const sh = $('tch-shock');
+    sh.style.display = G.shockUnlocked ? 'block' : 'none';
+    sh.classList.toggle('spent', G.shockCharges <= 0);
+    sh.dataset.count = G.shockCharges;
+    $('tch-torch').classList.toggle('on', G.flashlight);
+  }
 }

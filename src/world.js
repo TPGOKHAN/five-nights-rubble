@@ -22,9 +22,14 @@ function rnd() {
   return (seed - 1) / 2147483646;
 }
 
-export function buildWorld(scene) {
-  scene.background = new THREE.Color(0x02030a);
-  scene.fog = new THREE.FogExp2(0x02030a, 0.042);
+// Builds the ruined pizzeria. Everything solid goes into one group so the
+// vision system can raycast against it as the set of occluders; returns it.
+export function buildWorld(rootScene) {
+  rootScene.background = new THREE.Color(0x02030a);
+  rootScene.fog = new THREE.FogExp2(0x02030a, 0.042);
+  const scene = new THREE.Group();
+  scene.name = 'world';
+  rootScene.add(scene);
 
   const wallMat = m(0x2a2320);
   const wallMat2 = m(0x241e1c);
@@ -171,8 +176,8 @@ export function buildWorld(scene) {
   // a fallen "SHOW STAGE" style marquee of colored blocks near the player
   const partyColors = [0xaa2233, 0x2255aa, 0xaa8822, 0x22aa55];
   for (let i = 0; i < 6; i++) {
-    box(scene, 0.18, 0.18, 0.08, -1.4 + i * 0.5, 0.09, 9.6,
-      m(partyColors[i % 4], { emissive: partyColors[i % 4], emissiveIntensity: 0.04 }), 0.3 * (rnd() - 0.5));
+    box(scene, 0.16, 0.16, 0.16, -1.6 + i * 0.6 + (rnd() - 0.5) * 0.4, 0.08, 9.4 + rnd() * 0.9,
+      m(partyColors[i % 4], { roughness: 0.6 }), rnd() * Math.PI, (rnd() - 0.5) * 0.6);
   }
 
   // ---- lighting ----
@@ -215,7 +220,8 @@ export function buildWorld(scene) {
   dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
     color: 0x8899aa, size: 0.035, transparent: true, opacity: 0.55, sizeAttenuation: true
   }));
-  scene.add(dust);
+  rootScene.add(dust); // not an occluder
+  return scene;
 }
 
 export function worldTick(dt) {

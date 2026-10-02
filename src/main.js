@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { G, qs } from './state.js';
+import { G, DEBUG, SHOCK_CHARGES, debugNight } from './state.js';
 import * as SFX from './audio.js';
 import { buildWorld, worldTick } from './world.js';
 import {
@@ -9,12 +9,12 @@ import {
 import * as MON from './monitor.js';
 import * as UI from './ui.js';
 import { t, setLang } from './i18n.js';
-import { settings, loadSettings, saveSettings } from './settings.js';
+import { settings, loadSettings } from './settings.js';
 import {
-  save, loadSave, persist, wipeProgress, onAchievement,
-  recordDeath, recordNightSurvived, bump
+  save, loadSave, wipeProgress, onAchievement,
+  recordDeath, recordNightSurvived, recordAbandon, bump
 } from './save.js';
-import { attachAutopilot } from './autopilot.js';
+import * as VISION from './vision.js';
 
 // ---------- boot: settings + save ----------
 loadSettings();
@@ -34,7 +34,7 @@ const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 6
 camera.position.copy(PLAYER_POS);
 camera.rotation.order = 'YXZ';
 
-buildWorld(scene);
+VISION.initVision(buildWorld(scene));
 initChars(scene);
 MON.initMonitor(scene);
 
@@ -54,36 +54,64 @@ addEventListener('resize', () => {
 });
 
 // ---------- input ----------
+// Mouse players get pointer lock (with drag-to-look as a fallback when the
+// browser refuses the lock); touch players get drag-to-look plus on-screen
+// buttons. The mode follows whatever the player last touched, so touchscreen
+// laptops work with both.
 const canvas = renderer.domElement;
+let hadLock = false;
+
+addEventListener('pointerdown', (e) => {
+  UI.setTouchMode(e.pointerType === 'touch');
+}, true);
 
 function lockPointer() {
-  if (G.phase === 'play' && !G.monitorUp && !UI.isTouch() && canvas.requestPointerLock) {
-    canvas.requestPointerLock();
-  }
+  if (G.phase !== 'play' || G.monitorUp || UI.usingTouch() || !canvas.requestPointerLock) return;
+  try {
+    const p = canvas.requestPointerLock();
+    // modern browsers return a promise that rejects e.g. right after the user
+    // pressed Esc; the on-screen hint and drag-look cover that case
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) { /* not available (embedded frame etc.) */ }
 }
 
-canvas.addEventListener('click', () => {
-  if (G.phase !== 'play') return;
-  if (!UI.isTouch() && !document.pointerLockElement) { lockPointer(); return; }
-  if (!UI.isTouch()) toggleTorch();
-});
-
-document.addEventListener('mousemove', (e) => {
-  if (G.phase !== 'play' || G.monitorUp) return;
-  if (!document.pointerLockElement) return;
-  G.yaw -= e.movementX * 0.0021 * settings.sensitivity;
-  G.pitch -= e.movementY * 0.0021 * settings.sensitivity;
-  clampLook();
-});
-
-// pause when pointer lock is lost unexpectedly (Esc) during play
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && G.phase === 'play' && !G.monitorUp && !UI.isTouch()) {
-    pauseGame();
+  if (document.pointerLockElement) { hadLock = true; return; }
+  // lock lost while playing in mouse mode (Esc, alt-tab): pause
+  if (hadLock && G.phase === 'play' && !G.monitorUp && !UI.usingTouch()) pauseGame();
+  hadLock = false;
+});
+
+// mouse: click locks (or toggles the light once locked); drag looks around
+// when there is no lock
+let drag = null;
+canvas.addEventListener('mousedown', (e) => {
+  if (G.phase !== 'play' || UI.usingTouch()) return;
+  if (e.button === 2) { toggleMonitor(); return; }
+  if (e.button === 0) drag = { moved: 0 };
+});
+addEventListener('mouseup', () => {
+  if (drag && drag.moved < 6 && G.phase === 'play' && !G.monitorUp) {
+    if (document.pointerLockElement) toggleTorch();
+    else lockPointer();
+  }
+  drag = null;
+});
+document.addEventListener('mousemove', (e) => {
+  if (G.phase !== 'play' || G.monitorUp || UI.usingTouch()) return;
+  if (document.pointerLockElement) {
+    look(e.movementX * 0.0021, e.movementY * 0.0021);
+  } else if (drag) {
+    drag.moved += Math.abs(e.movementX) + Math.abs(e.movementY);
+    look(e.movementX * 0.0042, e.movementY * 0.0042);
   }
 });
+addEventListener('contextmenu', (e) => { if (G.phase === 'play' || G.phase === 'paused') e.preventDefault(); });
+document.getElementById('monitor').addEventListener('mousedown', (e) => {
+  if (e.button === 2) toggleMonitor();
+});
 
-// touch look: drag anywhere on the canvas
+// touch: drag anywhere on the canvas
 let lastTouch = null;
 canvas.addEventListener('touchstart', (e) => {
   if (e.touches.length === 1) lastTouch = [e.touches[0].clientX, e.touches[0].clientY];
@@ -91,12 +119,16 @@ canvas.addEventListener('touchstart', (e) => {
 canvas.addEventListener('touchmove', (e) => {
   if (G.phase !== 'play' || G.monitorUp || !lastTouch || e.touches.length !== 1) return;
   const tx = e.touches[0].clientX, ty = e.touches[0].clientY;
-  G.yaw -= (tx - lastTouch[0]) * 0.004 * settings.sensitivity;
-  G.pitch -= (ty - lastTouch[1]) * 0.004 * settings.sensitivity;
+  look((tx - lastTouch[0]) * 0.004, (ty - lastTouch[1]) * 0.004);
   lastTouch = [tx, ty];
-  clampLook();
 }, { passive: true });
 canvas.addEventListener('touchend', () => { lastTouch = null; }, { passive: true });
+
+function look(dx, dy) {
+  G.yaw -= dx * settings.sensitivity;
+  G.pitch -= dy * settings.sensitivity;
+  clampLook();
+}
 
 function clampLook() {
   G.yaw = Math.max(-2.1, Math.min(2.1, G.yaw));
@@ -115,10 +147,15 @@ function toggleMonitor() {
   else MON.openMonitor();
 }
 
+function feed() {
+  if (G.phase === 'play' && !G.monitorUp && CH.chica) CH.chica.feed();
+}
+
 function doShock() {
-  if (!G.shockUnlocked || G.shockCd > 0 || G.phase !== 'play') return;
+  if (!G.shockUnlocked || G.phase !== 'play' || G.stunTimer > 0) return;
+  if (G.shockCharges <= 0) { SFX.beep(false); UI.subtitle(t('sub_shockEmpty'), 3); return; }
+  G.shockCharges--;
   G.stunTimer = 60;
-  G.shockCd = 90;
   SFX.buzz(1.4, 0.4);
   UI.flashFx('#88bbff', 260);
   freezeEyes();
@@ -135,31 +172,47 @@ function doShock() {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Tab') e.preventDefault();
+  // panels (settings, achievements, custom night) own the keyboard: Escape
+  // backs out, everything else goes to the focused control
+  if (UI.panelOpen()) {
+    if (e.key === 'Escape') UI.closePanel();
+    return;
+  }
+  if (e.key === 'Tab' && (G.phase === 'play' || G.phase === 'jumpscare')) e.preventDefault();
+  if (e.repeat && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 
   const screenPhases = ['brief', 'death', 'nightdone', 'title', 'end'];
   if (screenPhases.includes(G.phase)) {
-    if (e.key === 'Enter') { e.preventDefault(); UI.pressScreenBtn(); }
+    // Enter = the screen's main button. Ignore it when a menu button has
+    // focus: the browser already clicks that one.
+    if (e.key === 'Enter' && !(document.activeElement && document.activeElement.tagName === 'BUTTON')) {
+      e.preventDefault();
+      UI.pressScreenBtn();
+    }
     return;
   }
   if (G.phase === 'paused') {
-    if (e.key === 'Enter') resumeGame();
+    if (e.key === 'Escape' || (e.key === 'Enter' && document.activeElement?.tagName !== 'BUTTON')) resumeGame();
     return;
   }
   if (G.phase !== 'play') return;
 
+  // keep Space/Enter from also activating whatever button last had focus
+  if (e.key === ' ' || e.key === 'Enter') e.preventDefault();
+
   switch (e.key.toLowerCase()) {
-    case ' ': e.preventDefault(); toggleTorch(); break;
+    case ' ': toggleTorch(); break;
     case 'tab': case 'c': toggleMonitor(); break;
     case 'f':
       if (G.monitorUp) MON.flashAction();
-      else if (CH.chica) CH.chica.feed();
+      else feed();
       break;
     case 'q': if (G.monitorUp) MON.audioAction(); break;
     case 'p':
       if (G.monitorUp) MON.programAction();
       else pauseGame();
       break;
+    case 'escape': pauseGame(); break; // only arrives when the pointer isn't locked
     case 'x': doShock(); break;
     case 'arrowleft': G.yaw += 0.09; clampLook(); break;
     case 'arrowright': G.yaw -= 0.09; clampLook(); break;
@@ -170,71 +223,83 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); toggleMonitor(); });
+// leaving the tab or the window always pauses — the night must not run on
+// while nobody is watching
+document.addEventListener('visibilitychange', () => { if (document.hidden && !G.qa) pauseGame(); });
+addEventListener('blur', () => { if (!G.qa) pauseGame(); });
+
 document.getElementById('cambar').addEventListener('click', toggleMonitor);
 document.getElementById('mon-close').addEventListener('click', toggleMonitor);
 document.getElementById('screen-btn').addEventListener('click', () => UI.pressScreenBtn());
+document.getElementById('lockhint').addEventListener('click', lockPointer);
+document.getElementById('mon-pause').addEventListener('click', () => pauseGame());
 
 // touch action buttons
 const tbind = (id, fn) => document.getElementById(id).addEventListener('click', fn);
 tbind('tch-torch', toggleTorch);
-tbind('tch-feed', () => { if (!G.monitorUp && CH.chica) CH.chica.feed(); });
+tbind('tch-feed', feed);
 tbind('tch-cams', toggleMonitor);
 tbind('tch-shock', doShock);
-tbind('tch-pause', () => { if (G.phase === 'play') pauseGame(); });
+tbind('tch-pause', () => pauseGame());
 
 // ---------- pause ----------
-function pauseGame() {
-  if (G.phase !== 'play') return;
-  G.phase = 'paused';
-  SFX.runSteps(false);
-  SFX.setDanger(0);
-  SFX.suspendAudio();
-  document.exitPointerLock && document.exitPointerLock();
-  UI.showPause({
-    onResume: resumeGame,
-    onSettings: () => { UI.hidePause(); UI.showSettingsPanel(() => UI.showPause(pauseHandlers()), null); },
-    onRestart: () => {
-      UI.hidePause(); SFX.resumeAudio(); MON.closeMonitor();
-      if (G.isCustom) beginCustomNight();
-      else briefNight(G.night);
-    },
-    onQuit: () => {
-      UI.hidePause(); SFX.resumeAudio(); MON.closeMonitor();
-      showTitle();
-    }
-  });
-}
 function pauseHandlers() {
   return {
     onResume: resumeGame,
     onSettings: () => { UI.hidePause(); UI.showSettingsPanel(() => UI.showPause(pauseHandlers()), null); },
     onRestart: () => {
       UI.hidePause(); SFX.resumeAudio(); MON.closeMonitor();
+      recordAbandon(G.isCustom);
+      G.food = G.foodAtNightStart; // food spent in the abandoned attempt comes back
       if (G.isCustom) beginCustomNight();
       else briefNight(G.night);
     },
-    onQuit: () => { UI.hidePause(); SFX.resumeAudio(); MON.closeMonitor(); showTitle(); }
+    onQuit: () => {
+      UI.hidePause(); SFX.resumeAudio(); MON.closeMonitor();
+      recordAbandon(G.isCustom);
+      showTitle();
+    }
   };
+}
+
+function pauseGame() {
+  if (G.phase !== 'play') return;
+  G.phase = 'paused';
+  SFX.runSteps(false);
+  SFX.setDanger(0);
+  SFX.suspendAudio();
+  if (document.pointerLockElement) { hadLock = false; document.exitPointerLock(); }
+  UI.showPause(pauseHandlers());
 }
 
 function resumeGame() {
   if (G.phase !== 'paused') return;
   UI.hidePause();
+  UI.hidePanel();
   SFX.resumeAudio();
   G.phase = 'play';
-  if (CH.foxy && CH.foxy.running) SFX.runSteps(true);
+  if (CH.foxy && CH.foxy.running && CH.foxy.stunTimer <= 0 && G.stunTimer <= 0) SFX.runSteps(true);
   lockPointer();
 }
 
 // ---------- game flow ----------
+function resetActors() {
+  Object.values(CH).forEach((ch) => { ch.active = false; ch.reset(); });
+}
+
 function showTitle() {
   G.phase = 'title';
   G.isCustom = false;
+  G.monitorUp = false;
   SFX.runSteps(false);
   SFX.setDanger(0);
   UI.hidePause(); UI.hidePanel();
-  UI.showTitleMenu({
+  resetActors();
+  UI.showTitleMenu(titleHandlers());
+}
+
+function titleHandlers() {
+  return {
     onContinue: () => {
       G.food = save.foodAtNight[save.unlockedNight] ?? 10;
       G.n4bonusGiven = false;
@@ -252,9 +317,9 @@ function showTitle() {
     },
     onCustom: () => UI.showCustomPanel(() => beginCustomNight(), () => showTitle()),
     onAchievements: () => UI.showAchievementsPanel(() => showTitle()),
-    onSettings: () => UI.showSettingsPanel(() => showTitle(), () => showTitle()),
+    onSettings: () => UI.showSettingsPanel(() => showTitle(), () => UI.showTitleMenu(titleHandlers())),
     onLangChange: () => showTitle()
-  });
+  };
 }
 
 function startFresh() {
@@ -266,6 +331,7 @@ function startFresh() {
 
 function confirmScreen(msg, yesLabel, onYes, onNo) {
   UI.showScreen('<p>' + msg + '</p>', yesLabel, onYes);
+  UI.setEnterHandler(onNo); // Enter must never confirm a destructive choice
   const menu = document.getElementById('screen-menu');
   const b = document.createElement('button');
   b.className = 'menubtn';
@@ -279,28 +345,43 @@ function briefNight(n) {
   G.night = n;
   G.isCustom = false;
   UI.showScreen(UI.briefHtml(n), t('btnStartNight', n), () => beginNight(n));
+  addMenuButton();
+}
+
+function addMenuButton() {
+  const q = document.createElement('button');
+  q.className = 'menubtn';
+  q.textContent = t('btnQuitTitle');
+  q.onclick = () => showTitle();
+  document.getElementById('screen-menu').appendChild(q);
+}
+
+function resetNightState() {
+  G.timeLeft = G.duration;
+  G.stunTimer = 0;
+  G.flashlight = false;
+  G.monitorUp = false;
+  G.cam = 0;
+  G.yaw = 0; G.pitch = 0;
+  G.nightStartedAt = performance.now();
+  MON.resetCooldowns();
+  MON.closeMonitor();
+  UI.hideScreen();
 }
 
 function beginNight(n) {
   SFX.initAudio();
   G.night = n;
   G.isCustom = false;
-  G.timeLeft = G.duration;
   G.monitorUnlocked = n >= 3;
   G.audioUnlocked = n >= 4;
   G.programUnlocked = n >= 5;
   G.shockUnlocked = n >= 5;
-  G.shockCd = 0;
-  G.stunTimer = 0;
-  G.flashlight = false;
-  G.monitorUp = false;
-  G.cam = 0;
-  G.yaw = 0; G.pitch = 0;
+  G.shockCharges = G.shockUnlocked ? SHOCK_CHARGES : 0;
   if (n === 4 && !G.n4bonusGiven) { G.food += 3; G.n4bonusGiven = true; }
   G.foodAtNightStart = G.food;
   setupNight(n);
-  MON.closeMonitor();
-  UI.hideScreen();
+  resetNightState();
   G.phase = 'play';
   UI.subtitle(t('sub_nightStart'), 5);
   lockPointer();
@@ -309,70 +390,92 @@ function beginNight(n) {
 function beginCustomNight() {
   SFX.initAudio();
   G.isCustom = true;
-  G.timeLeft = G.duration;
   G.monitorUnlocked = true;
   G.audioUnlocked = true;
   G.programUnlocked = true;
   G.shockUnlocked = true;
-  G.shockCd = 0;
-  G.stunTimer = 0;
-  G.flashlight = false;
-  G.monitorUp = false;
-  G.cam = 0;
-  G.yaw = 0; G.pitch = 0;
+  G.shockCharges = SHOCK_CHARGES;
   G.food = 10;
   G.foodAtNightStart = 10;
   setupCustomNight(G.customLevels);
-  MON.closeMonitor();
-  UI.hideScreen();
+  resetNightState();
   G.phase = 'play';
   UI.subtitle(t('sub_nightStart'), 5);
   lockPointer();
 }
 
+const fwdTmp = new THREE.Vector3();
 const api = {
   jumpscare: startJumpscare,
+  // the beam is on this character's face: pointed within ~17° of its head
+  // AND nothing solid between the player and its eyes
   aimedAt(ch) {
     const head = new THREE.Vector3();
     ch.mesh.getWorldPosition(head);
     head.y += ch.mesh.userData.headY || 2.6;
     const dir = head.sub(camera.position).normalize();
-    const fwd = new THREE.Vector3();
-    camera.getWorldDirection(fwd);
-    return fwd.angleTo(dir) < 0.3;
+    camera.getWorldDirection(fwdTmp);
+    if (fwdTmp.angleTo(dir) >= 0.3) return false;
+    return VISION.eyePoints(ch).some((p) => VISION.lineOfSight(camera.position, p));
   }
 };
 
+// ---------- jumpscare ----------
+// The view snaps to the attacker and it lunges until its face fills the
+// screen at eye level — wherever the player happened to be looking.
 function startJumpscare(ch) {
   if (G.phase !== 'play') return;
   G.phase = 'jumpscare';
   G.killer = ch;
   G.jumpT = 0;
   MON.closeMonitor();
+  G.flashlight = true; // you see it coming
   SFX.screech(ch.screechPitch || 1);
   SFX.runSteps(false);
   SFX.setDanger(0);
-  document.exitPointerLock && document.exitPointerLock();
+  if (document.pointerLockElement) { hadLock = false; document.exitPointerLock(); }
+
+  const d = ch.mesh.position.clone().sub(PLAYER_POS);
+  d.y = 0;
+  if (d.lengthSq() < 0.01) d.set(0, 0, -1);
+  d.normalize();
+  G.jump = {
+    dir: d,
+    start: ch.mesh.position.clone(),
+    yaw0: G.yaw,
+    pitch0: G.pitch,
+    yaw1: Math.atan2(-d.x, -d.z)
+  };
+}
+
+function lerpAngle(a, b, k) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * k;
 }
 
 function updateJumpscare(dt) {
   G.jumpT += dt;
   const ch = G.killer;
-  const tt = Math.min(1, G.jumpT / 0.3);
-  const fwd = new THREE.Vector3();
-  camera.getWorldDirection(fwd);
-  const target = camera.position.clone().add(fwd.multiplyScalar(1.1));
-  target.y = 0;
-  ch.mesh.position.lerp(target, tt);
-  ch.mesh.lookAt(camera.position.x, 0, camera.position.z);
+  const j = G.jump;
+  const turn = Math.min(1, G.jumpT / 0.16);
+  const ease = 1 - (1 - turn) * (1 - turn);
+  G.yaw = lerpAngle(j.yaw0, j.yaw1, ease);
+  G.pitch = j.pitch0 + (0.04 - j.pitch0) * ease;
+
+  const lunge = Math.min(1, G.jumpT / 0.28);
+  const target = PLAYER_POS.clone().add(j.dir.clone().multiplyScalar(1.15));
+  target.y = PLAYER_POS.y - (ch.mesh.userData.headY || 2.6) + 0.12; // face at eye level
+  ch.mesh.position.lerpVectors(j.start, target, 1 - (1 - lunge) * (1 - lunge));
+  ch.mesh.lookAt(PLAYER_POS.x, ch.mesh.position.y, PLAYER_POS.z);
   ch.setEyes(4, 0xff0000);
-  // arms fly up, jaw snaps
   const u = ch.mesh.userData;
   if (u.arms) {
-    u.arms[0].rotation.x = -1.6 * tt;
-    u.arms[1].rotation.x = -1.6 * tt;
+    u.arms[0].rotation.x = -1.6 * lunge;
+    u.arms[1].rotation.x = -1.6 * lunge;
   }
-  if (u.jaw) u.jaw.rotation.x = 0.55 * Math.abs(Math.sin(G.jumpT * 26)) * tt;
+  if (u.jaw) u.jaw.rotation.x = 0.55 * Math.abs(Math.sin(G.jumpT * 26)) * lunge;
   camera.position.set(
     PLAYER_POS.x + (Math.random() - 0.5) * 0.14,
     PLAYER_POS.y + (Math.random() - 0.5) * 0.14,
@@ -380,6 +483,7 @@ function updateJumpscare(dt) {
   );
   if (G.jumpT > 1.3) {
     camera.position.copy(PLAYER_POS);
+    G.flashlight = false;
     showDeath(ch);
   }
 }
@@ -387,21 +491,23 @@ function updateJumpscare(dt) {
 function showDeath(ch) {
   G.phase = 'death';
   G.food = G.foodAtNightStart;
-  recordDeath(ch.name);
-  const retry = G.isCustom
-    ? () => beginCustomNight()
-    : () => briefNight(G.night);
+  recordDeath(ch.name, G.isCustom);
+  const retry = G.isCustom ? () => beginCustomNight() : () => briefNight(G.night);
   UI.showScreen(`
     <h2 class="death">${t('death_title', ch.name)}</h2>
     <p>${t('death_body')}</p>
+    <p class="tip">${t('deathTip_' + ch.kind)}</p>
     <p class="sub">${G.isCustom ? t('cn_title') : t('death_sub', G.night)}</p>
   `, G.isCustom ? t('cn_start') : t('btnRetry', G.night), retry);
+  addMenuButton();
 }
 
 function nightComplete() {
   SFX.ding();
   SFX.runSteps(false);
   SFX.setDanger(0);
+  if (G.monitorUp) MON.closeMonitor();
+  if (document.pointerLockElement) { hadLock = false; document.exitPointerLock(); }
   if (G.isCustom) {
     const all10 = Object.values(G.customLevels).every((v) => v === 10);
     recordNightSurvived(0, G.food, true, all10);
@@ -421,6 +527,7 @@ function nightComplete() {
     <p>${t('dawn_body')}</p>
     <p class="sub">${t('dawn_sub', G.night, 5 - G.night)}</p>
   `, t('btnNight', next), () => briefNight(next));
+  addMenuButton();
 }
 
 // ---------- rescue cutscene ----------
@@ -447,7 +554,6 @@ function startCutscene() {
   G.phase = 'cutscene';
   G.flashlight = false;
   MON.closeMonitor();
-  document.exitPointerLock && document.exitPointerLock();
 
   const lineup = [CH.bonnie, CH.chica, CH.freddy, CH.foxy, CH.endo];
   lineup.forEach((ch, i) => {
@@ -470,8 +576,14 @@ function startCutscene() {
   scene.add(beam, beamTarget);
   beam.target = beamTarget;
 
-  cut = { t: 0, officer, afton, beam, lineup, fired: new Set(), toppling: [] };
+  cut = { t: 0, officer, afton, beam, beamTarget, lineup, fired: new Set(), toppling: [] };
   G.yaw = 0.8; G.pitch = 0;
+}
+
+function endCutscene() {
+  if (!cut) return;
+  scene.remove(cut.officer, cut.afton, cut.beam, cut.beamTarget);
+  cut = null;
 }
 
 const CUT_EVENTS = [
@@ -505,8 +617,9 @@ function updateCutscene(dt) {
   cut.beam.position.copy(cut.officer.position).add(new THREE.Vector3(0, 1.6, 0));
 
   CUT_EVENTS.forEach(([tt, fn], i) => {
-    if (cut.t >= tt && !cut.fired.has(i)) { cut.fired.add(i); fn(cut); }
+    if (cut && cut.t >= tt && !cut.fired.has(i)) { cut.fired.add(i); fn(cut); }
   });
+  if (!cut) return;
 
   cut.toppling.forEach((tp) => {
     tp.t = Math.min(1, tp.t + dt * 1.4);
@@ -531,12 +644,7 @@ function showEnd() {
     G.food = 10;
     G.night = 1;
     G.n4bonusGiven = false;
-    // clean up cutscene props
-    if (cut) {
-      scene.remove(cut.officer, cut.afton, cut.beam);
-      cut = null;
-    }
-    Object.values(CH).forEach((ch) => { ch.active = false; ch.reset(); });
+    endCutscene();
     showTitle();
   });
 }
@@ -546,14 +654,17 @@ function updatePlay(dt) {
   G.timeLeft -= dt;
   if (G.timeLeft <= 0) { nightComplete(); return; }
 
-  G.shockCd = Math.max(0, G.shockCd - dt);
-
   if (G.stunTimer > 0) {
     G.stunTimer -= dt;
     SFX.setDanger(0);
     if (G.stunTimer <= 0) {
       UI.subtitle(t('sub_shockEnd'), 3);
-      Object.values(CH).forEach((ch) => { if (ch.active && ch.state !== 'attack') ch.setEyes(0.35, 0xffffff); });
+      Object.values(CH).forEach((ch) => {
+        if (!ch.active) return;
+        if (ch.state === 'attack') ch.setEyes(2.2, 0xff2222);
+        else ch.setEyes(0.35, 0xffffff);
+      });
+      if (CH.foxy && CH.foxy.active && CH.foxy.running) SFX.runSteps(true);
     }
   } else {
     updateChars(dt, api);
@@ -571,9 +682,8 @@ function tick() {
   frame();
 }
 
-// keep simulating (at reduced rate) when the tab is hidden and RAF stalls —
-// also what lets the headless QA autopilot run
-setInterval(() => { if (performance.now() - lastFrame > 90) frame(); }, 50);
+// the QA bot keeps simulating when the tab is hidden and RAF stalls
+setInterval(() => { if (G.qa && performance.now() - lastFrame > 90) frame(); }, 50);
 
 function frame() {
   lastFrame = performance.now();
@@ -583,7 +693,7 @@ function frame() {
 
   if (G.phase === 'play') updatePlay(dt);
   else if (G.phase === 'jumpscare') updateJumpscare(dt);
-  else if (G.phase === 'cutscene') updateCutscene(dt);
+  else if (G.phase === 'cutscene' && cut) updateCutscene(dt);
 
   camera.rotation.set(G.pitch, G.yaw, 0);
   if (G.phase === 'play') {
@@ -591,10 +701,14 @@ function frame() {
   }
 
   torch.position.copy(camera.position);
-  const fwd = new THREE.Vector3();
-  camera.getWorldDirection(fwd);
-  torchTarget.position.copy(camera.position).add(fwd.multiplyScalar(10));
-  torch.intensity = (G.flashlight && !G.monitorUp && (G.phase === 'play' || G.phase === 'jumpscare')) ? 320 : 0;
+  camera.getWorldDirection(fwdTmp);
+  torchTarget.position.copy(camera.position).add(fwdTmp.multiplyScalar(10));
+  if (G.phase === 'jumpscare') {
+    // point blank: a dying, strobing beam so the face reads instead of blowing out
+    torch.intensity = Math.random() < 0.18 ? 0 : 14 + Math.random() * 22;
+  } else {
+    torch.intensity = (G.flashlight && !G.monitorUp && G.phase === 'play') ? 260 : 0;
+  }
 
   let renderCam = camera;
   if (G.monitorUp && G.phase === 'play') {
@@ -610,26 +724,32 @@ function frame() {
   UI.updateHUD();
 }
 
-// ---------- debug hooks ----------
-window.FN = {
-  G, CH, save, settings,
-  start: (n) => { G.night = n; beginNight(n); },
-  custom: (levels) => { if (levels) Object.assign(G.customLevels, levels); beginCustomNight(); },
-  brief: briefNight,
-  look: (yaw, pitch) => { G.yaw = yaw; G.pitch = pitch ?? 0; },
-  torch: toggleTorch,
-  monitor: toggleMonitor,
-  cam: MON.switchCam,
-  win: () => { G.timeLeft = 0.01; },
-  cutscene: startCutscene,
-  shock: doShock,
-  pause: pauseGame,
-  resume: resumeGame,
-  title: showTitle,
-  camera
-};
-attachAutopilot(window.FN, api);
+// ---------- debug / QA hooks (dev server or ?debug only) ----------
+if (DEBUG) {
+  import('./autopilot.js').then(({ attachAutopilot }) => {
+    window.FN = {
+      G, CH, save, settings,
+      start: (n) => { G.night = n; beginNight(n); },
+      custom: (levels) => { if (levels) Object.assign(G.customLevels, levels); beginCustomNight(); },
+      brief: briefNight,
+      look: (yaw, pitch) => { G.yaw = yaw; G.pitch = pitch ?? 0; },
+      torch: toggleTorch,
+      monitor: toggleMonitor,
+      cam: MON.switchCam,
+      win: () => { G.timeLeft = 0.01; },
+      cutscene: startCutscene,
+      shock: doShock,
+      pause: pauseGame,
+      resume: resumeGame,
+      title: showTitle,
+      camera,
+      vision: VISION,
+      V: (x, y, z) => new THREE.Vector3(x, y, z)
+    };
+    attachAutopilot(window.FN);
+  });
+}
 
 showTitle();
-if (qs.get('night')) briefNight(Number(qs.get('night')));
+if (debugNight()) briefNight(Math.min(5, Math.max(1, debugNight())));
 tick();

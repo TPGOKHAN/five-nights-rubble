@@ -4,25 +4,36 @@ import * as SFX from './audio.js';
 import { subtitle } from './ui.js';
 import { t } from './i18n.js';
 import { bump } from './save.js';
+import { canSee } from './vision.js';
+import { buildBody } from './models.js';
 
 export const PLAYER_POS = new THREE.Vector3(0, 1.7, 13);
 
-// Waypoints: p = [x, y, z], cam = camera index that sees this spot,
-// dir = i18n key for the direction cue at attack nodes
+// Waypoints: p = [x, y, z]; dir = i18n key for the direction cue at attack
+// nodes. Which camera shows a character is NOT stored here — the vision
+// system works it out from what each camera can actually see.
+// Attack spots sit inside the narrow window the player can see out of the
+// debris (between the two leaning slabs); FN.audit() verifies every spot.
+// Rooms two characters share have a separate spot for each, so they never
+// stand inside one another.
 export const WP = {
-  stageL:    { p: [-3.5, 0.8, -12.5], cam: 0 },
-  stageC:    { p: [0,    0.8, -12.8], cam: 0 },
-  stageR:    { p: [3.5,  0.8, -12.5], cam: 0 },
-  dining:    { p: [0,    0,   -2],    cam: 1 },
-  backstage: { p: [-13,  0,   -8],    cam: 2 },
-  cove:      { p: [-13,  0,    2],    cam: 3 },
-  westHall:  { p: [-7,   0,    7],    cam: 4 },
-  eastHall:  { p: [7,    0,    7],    cam: 5 },
-  kitchen:   { p: [13,   0,   -6],    cam: 6 },
-  parts:     { p: [13,   0,    3],    cam: 7 },
-  attackW:   { p: [-2.6, 0,   10.3],  cam: 1, dir: 'dirLeft' },
-  attackE:   { p: [2.6,  0,   10.3],  cam: 1, dir: 'dirRight' },
-  attackC:   { p: [0,    0,   10.0],  cam: 1, dir: 'dirFront' }
+  stageL:    { p: [-3.5, 0.8, -12.5] },
+  stageC:    { p: [0,    0.8, -12.8] },
+  stageR:    { p: [3.5,  0.8, -12.5] },
+  dining:    { p: [0,    0,   -2] },
+  diningB:   { p: [2.4,  0,   -0.4] },
+  backstage: { p: [-13,  0,   -8] },
+  cove:      { p: [-13,  0,    2] },
+  westHall:  { p: [-7,   0,    7] },
+  eastHall:  { p: [7,    0,    7] },
+  eastHallB: { p: [5.4,  0,    5.2] },
+  kitchen:   { p: [13,   0,   -6] },
+  kitchenB:  { p: [12.4, 0,   -3.6] },
+  parts:     { p: [13,   0,    3] },
+  attackW:   { p: [-2.1, 0,    8.6], dir: 'dirLeft' },
+  attackE:   { p: [2.1,  0,    8.6], dir: 'dirRight' },
+  attackC:   { p: [0.55, 0,    9.5], dir: 'dirFront' },
+  attackC2:  { p: [-0.75, 0,   8.9], dir: 'dirFront' }
 };
 
 export const hooks = {
@@ -33,115 +44,6 @@ export const hooks = {
 function rand([a, b]) { return a + Math.random() * (b - a); }
 
 let kitchenCued = false;
-
-// ---------- model building (all primitives) ----------
-function mat(c, extra = {}) {
-  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.75, metalness: 0.2, ...extra });
-}
-function limb(w, h, d, material) {
-  return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-}
-
-function buildBody(kind, color) {
-  const g = new THREE.Group();
-  const bodyMat = mat(color);
-  const darkMat = mat(new THREE.Color(color).multiplyScalar(0.55));
-
-  if (kind === 'endo') {
-    const metal = mat(0x30343a, { metalness: 0.9, roughness: 0.35 });
-    const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.1, 6), metal);
-    legL.position.set(-0.22, 0.55, 0);
-    const legR = legL.clone(); legR.position.x = 0.22;
-    const spine = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.0, 6), metal);
-    spine.position.y = 1.65;
-    const ribs = limb(0.68, 0.75, 0.36, metal); ribs.position.y = 1.75;
-    const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 6), metal);
-    armL.position.set(-0.48, 1.7, 0); armL.rotation.z = 0.15;
-    const armR = armL.clone(); armR.position.x = 0.48; armR.rotation.z = -0.15;
-    const head = limb(0.46, 0.5, 0.5, metal); head.position.y = 2.5;
-    const jaw = limb(0.4, 0.14, 0.4, mat(0x22262c, { metalness: 0.9 })); jaw.position.set(0, 2.22, 0.06);
-    g.add(legL, legR, spine, ribs, armL, armR, head, jaw);
-    const eyeGeo = new THREE.SphereGeometry(0.07, 8, 8);
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 3.2 });
-    const eL = new THREE.Mesh(eyeGeo, eyeMat); eL.position.set(-0.13, 2.56, 0.24);
-    const eR = eL.clone(); eR.position.x = 0.13;
-    g.add(eL, eR);
-    g.userData.eyes = [eL, eR];
-    g.userData.arms = [armL, armR];
-    g.userData.jaw = jaw;
-    g.userData.headY = 2.5;
-    return g;
-  }
-
-  // suit characters
-  const legL = limb(0.34, 1.05, 0.36, bodyMat); legL.position.set(-0.26, 0.52, 0);
-  const legR = legL.clone(); legR.position.x = 0.26;
-  const torso = limb(1.1, 1.2, 0.66, bodyMat); torso.position.y = 1.7;
-  const belly = limb(0.72, 0.75, 0.1, mat(new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.35)));
-  belly.position.set(0, 1.62, 0.36);
-  const armL = limb(0.28, 1.05, 0.3, bodyMat); armL.position.set(-0.72, 1.72, 0); armL.rotation.z = 0.12;
-  const armR = armL.clone(); armR.position.x = 0.72; armR.rotation.z = -0.12;
-  const head = limb(0.82, 0.74, 0.74, bodyMat); head.position.y = 2.68;
-  const jaw = limb(0.56, 0.16, 0.5, darkMat); jaw.position.set(0, 2.33, 0.16);
-  g.add(legL, legR, torso, belly, armL, armR, head, jaw);
-
-  const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8);
-  const mkEye = () => new THREE.Mesh(eyeGeo, new THREE.MeshStandardMaterial({
-    color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.0
-  }));
-  const eL = mkEye(); eL.position.set(-0.19, 2.74, 0.38);
-  const eR = mkEye(); eR.position.set(0.19, 2.74, 0.38);
-  g.add(eL, eR);
-  g.userData.eyes = [eL, eR];
-  g.userData.arms = [armL, armR];
-  g.userData.jaw = jaw;
-  g.userData.headY = 2.7;
-
-  if (kind === 'bonnie') {
-    const earL = limb(0.17, 0.95, 0.12, bodyMat); earL.position.set(-0.22, 3.4, 0); earL.rotation.z = 0.12;
-    const earR = earL.clone(); earR.position.x = 0.22; earR.rotation.z = -0.12;
-    const muzzle = limb(0.34, 0.22, 0.24, darkMat); muzzle.position.set(0, 2.52, 0.44);
-    const bow = limb(0.34, 0.18, 0.12, mat(0xaa1122)); bow.position.set(0, 2.2, 0.36);
-    g.add(earL, earR, muzzle, bow);
-  } else if (kind === 'chica') {
-    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.34, 4), mat(0xcc7711));
-    beak.rotation.x = Math.PI / 2; beak.position.set(0, 2.56, 0.5);
-    const bib = limb(0.82, 0.62, 0.06, mat(0xf5f0e0)); bib.position.set(0, 2.0, 0.4);
-    const tuft = limb(0.1, 0.28, 0.1, bodyMat); tuft.position.set(0, 3.14, 0); tuft.rotation.z = 0.3;
-    const tuft2 = tuft.clone(); tuft2.rotation.z = -0.35; tuft2.position.x = 0.12;
-    g.add(beak, bib, tuft, tuft2);
-  } else if (kind === 'foxy') {
-    const earL = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.4, 4), bodyMat);
-    earL.position.set(-0.24, 3.2, 0);
-    const earR = earL.clone(); earR.position.x = 0.24;
-    const snout = limb(0.26, 0.18, 0.5, darkMat); snout.position.set(0, 2.5, 0.55);
-    const patch = limb(0.2, 0.12, 0.03, mat(0x111111)); patch.position.set(-0.19, 2.74, 0.4);
-    const hook = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.3, 6), mat(0xb9c2cc, { metalness: 0.9, roughness: 0.3 }));
-    hook.position.set(0.72, 1.12, 0.12); hook.rotation.x = Math.PI;
-    legR.material = mat(0x30343a, { metalness: 0.9, roughness: 0.35 });
-    g.add(earL, earR, snout, patch, hook);
-  } else if (kind === 'freddy') {
-    const earL = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.1, 8), bodyMat);
-    earL.rotation.x = Math.PI / 2; earL.position.set(-0.32, 3.12, 0);
-    const earR = earL.clone(); earR.position.x = 0.32;
-    const muzzle = limb(0.36, 0.24, 0.26, mat(0x8a6a40)); muzzle.position.set(0, 2.5, 0.44);
-    const nose = limb(0.12, 0.1, 0.08, mat(0x221100)); nose.position.set(0, 2.56, 0.58);
-    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.3, 10), mat(0x111111));
-    hat.position.set(0, 3.2, 0);
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.05, 10), mat(0x111111));
-    brim.position.set(0, 3.06, 0);
-    const bow = limb(0.34, 0.18, 0.12, mat(0x111111)); bow.position.set(0, 2.2, 0.36);
-    g.add(earL, earR, muzzle, nose, hat, brim, bow);
-  }
-
-  for (let i = 0; i < 3; i++) {
-    const gash = limb(0.18 + Math.random() * 0.2, 0.3, 0.05, mat(0x0d0d0d));
-    gash.position.set((Math.random() - 0.5) * 0.8, 1.3 + Math.random() * 1.2, 0.34);
-    gash.rotation.z = Math.random() * 1.5;
-    g.add(gash);
-  }
-  return g;
-}
 
 // ---------- character classes ----------
 class Walker {
@@ -174,7 +76,7 @@ class Walker {
   resetPose() {
     const u = this.mesh.userData;
     if (u.arms) { u.arms[0].rotation.x = 0; u.arms[1].rotation.x = 0; }
-    if (u.jaw) { u.jaw.rotation.x = 0; u.jaw.position.y = u.jaw.userData?.baseY ?? u.jaw.position.y; }
+    if (u.jaw) u.jaw.rotation.x = 0;
   }
 
   activate(interval) {
@@ -189,7 +91,6 @@ class Walker {
   }
 
   wp() { return WP[this.path[this.idx]]; }
-  locCam() { return this.wp().cam; }
 
   place() {
     const w = this.wp();
@@ -240,7 +141,7 @@ class Walker {
         this.place();
         this.stepSound();
         hooks.blip();
-        if (this.path[this.idx] === 'kitchen') {
+        if (this.path[this.idx].startsWith('kitchen')) {
           SFX.pots();
           if (!kitchenCued) { kitchenCued = true; subtitle(t('sub_kitchen'), 4); }
         }
@@ -342,9 +243,12 @@ class Freddy extends Walker {
     this.attackTimer -= dt;
     if (this.attackTimer <= 0) api.jumpscare(this);
   }
-  audio(camIdx) {
+  // camera = the security camera the lure is played through
+  // true = lured back, 'home' = already on stage (nothing to undo), false = not on this feed
+  audio(camera) {
     if (!this.active) return false;
-    if (this.locCam() !== camIdx) return false;
+    if (!canSee(camera, this)) return false;
+    if (this.idx === 0) return 'home';
     SFX.laugh();
     subtitle(t('sub_freddyLure'), 4);
     bump('freddyLures');
@@ -394,9 +298,12 @@ class Foxy {
     this.mesh.lookAt(look);
     this.mesh.rotation.x = this.active ? 0 : 0.12;
   }
-  locCam() {
-    if (!this.running) return 3;
-    return this.runT < this.runDur * 0.55 ? 4 : 1;
+  // position along the sprint, t = 0..1: cove -> west hall -> the debris
+  runPos(t) {
+    const a = new THREE.Vector3(...WP.cove.p);
+    const b = new THREE.Vector3(...WP.westHall.p);
+    const c = new THREE.Vector3(PLAYER_POS.x - 0.5, 0, PLAYER_POS.z - 4.2);
+    return t < 0.5 ? a.lerp(b, t * 2) : b.lerp(c, (t - 0.5) * 2);
   }
   update(dt, api) {
     if (!this.active) return;
@@ -433,12 +340,7 @@ class Foxy {
       }
     } else {
       this.runT += dt;
-      const tt = this.runT / this.runDur;
-      const a = new THREE.Vector3(...WP.cove.p);
-      const b = new THREE.Vector3(...WP.westHall.p);
-      const c = new THREE.Vector3(PLAYER_POS.x - 0.5, 0, PLAYER_POS.z - 2.2);
-      const pos = tt < 0.5 ? a.clone().lerp(b, tt * 2) : b.clone().lerp(c, (tt - 0.5) * 2);
-      this.mesh.position.copy(pos);
+      this.mesh.position.copy(this.runPos(Math.min(1, this.runT / this.runDur)));
       const look = PLAYER_POS.clone(); look.y = 0;
       this.mesh.lookAt(look);
       this.mesh.position.y = Math.abs(Math.sin(this.runT * 14)) * 0.18;
@@ -449,11 +351,11 @@ class Foxy {
       }
     }
   }
-  flash(camIdx) {
+  flash(camera) {
     if (!this.active) return false;
     if (this.stunTimer > 0) return false;
-    if (this.locCam() !== camIdx) return false;
-    if (!this.running && this.stage === 0) return false;
+    if (!this.running && this.stage === 0) return false; // still behind the curtain
+    if (!canSee(camera, this)) return false;
     this.stunTimer = 30;
     SFX.runSteps(false);
     SFX.growl(140, 0.6);
@@ -474,9 +376,10 @@ class Endo extends Walker {
     this.attackTimer -= dt;
     if (this.attackTimer <= 0) api.jumpscare(this);
   }
-  program(camIdx) {
+  program(camera) {
     if (!this.active) return false;
-    if (this.locCam() !== camIdx) return false;
+    if (!canSee(camera, this)) return false;
+    if (this.idx === 0 && this.state === 'idle') return 'home';
     SFX.beep(true);
     subtitle(t('sub_endoProg'), 4);
     bump('endoPrograms');
@@ -496,9 +399,9 @@ export const CH = {};
 export function initChars(scene) {
   CH.bonnie = new Bonnie('Bonnie', 'bonnie', 0x4a3f9f, ['stageL', 'backstage', 'westHall', 'attackW'], scene);
   CH.chica = new Chica('Chica', 'chica', 0xd8c22a, ['stageR', 'kitchen', 'eastHall', 'attackE'], scene);
-  CH.freddy = new Freddy('Freddy', 'freddy', 0x6b4a2a, ['stageC', 'dining', 'eastHall', 'attackC'], scene);
+  CH.freddy = new Freddy('Freddy', 'freddy', 0x6b4a2a, ['stageC', 'dining', 'eastHallB', 'attackC'], scene);
   CH.foxy = new Foxy(scene);
-  CH.endo = new Endo('Endo-01', 'endo', 0x30343a, ['parts', 'kitchen', 'dining', 'attackC'], scene);
+  CH.endo = new Endo('Endo-01', 'endo', 0x30343a, ['parts', 'kitchenB', 'diningB', 'attackC2'], scene);
   return CH;
 }
 
@@ -550,7 +453,7 @@ export function dangerLevel() {
   let d = 0;
   Object.values(CH).forEach((ch) => {
     if (!ch.active) return;
-    if (ch.running) d = Math.max(d, 1);
+    if (ch.running && !(ch.stunTimer > 0)) d = Math.max(d, 1);
     else if (ch.state === 'attack') {
       d = Math.max(d, 0.65 + 0.35 * (1 - ch.attackTimer / (ch.attackWindow || 1)));
     } else if (ch.stage >= 2) d = Math.max(d, 0.35);

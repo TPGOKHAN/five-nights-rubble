@@ -1,4 +1,6 @@
-// Persistent player settings (localStorage).
+// Persistent player settings (localStorage). Every storage access is guarded:
+// private browsing and blocked site data make localStorage throw, and the
+// game must still boot with defaults.
 const KEY = 'fnr.settings';
 
 export const settings = {
@@ -11,13 +13,12 @@ export const settings = {
 };
 
 export function loadSettings() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) Object.assign(settings, JSON.parse(raw));
-  } catch (e) { /* corrupted or unavailable storage — keep defaults */ }
-  // auto-detect Turkish on first run
-  if (!localStorage.getItem(KEY) && (navigator.language || '').toLowerCase().startsWith('tr')) {
-    settings.lang = 'tr';
+  let raw = null;
+  try { raw = localStorage.getItem(KEY); } catch (e) { /* storage unavailable */ }
+  if (raw) {
+    try { Object.assign(settings, JSON.parse(raw)); } catch (e) { /* corrupted — keep defaults */ }
+  } else if ((navigator.language || '').toLowerCase().startsWith('tr')) {
+    settings.lang = 'tr'; // first run on a Turkish browser
   }
   return settings;
 }

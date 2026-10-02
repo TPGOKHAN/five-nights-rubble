@@ -2,12 +2,13 @@ import * as THREE from 'three';
 import { G } from './state.js';
 import * as SFX from './audio.js';
 import { CH } from './animatronics.js';
-import { subtitle, flashFx } from './ui.js';
+import { subtitle, flashFx, keyHint } from './ui.js';
 import { t } from './i18n.js';
 import { settings } from './settings.js';
+import { canSee } from './vision.js';
 
 export const CAMS = [
-  { id: 'CAM 1', name: 'SHOW STAGE', pos: [0, 3.6, -16.5], look: [0, 1.6, -11] },
+  { id: 'CAM 1', name: 'SHOW STAGE', pos: [0, 3.9, -6.2], look: [0, 1.6, -13] },
   { id: 'CAM 2', name: 'DINING AREA', pos: [-5, 3.8, -5], look: [0, 0.8, 6] },
   { id: 'CAM 3', name: 'BACKSTAGE', pos: [-16.5, 3.2, -12], look: [-12, 1, -7] },
   { id: 'CAM 4', name: 'PIRATE COVE', pos: [-11.8, 3.4, 7], look: [-13.5, 1, 2] },
@@ -62,6 +63,12 @@ export function resizeCams(aspect) {
 }
 
 export function activeCamera() { return camObjs[G.cam]; }
+
+// indices of every camera that currently shows this character
+export function camsSeeing(ch) {
+  return camObjs.map((c, i) => (canSee(c, ch) ? i : -1)).filter((i) => i >= 0);
+}
+export function camObject(i) { return camObjs[i]; }
 export function setCamLight(on) { if (camLight) camLight.visible = on; }
 
 export function openMonitor() {
@@ -99,21 +106,24 @@ export function blip() {
 export function refreshButtons() {
   $('camname').textContent = CAMS[G.cam].id + ' — ' + CAMS[G.cam].name;
   document.querySelectorAll('.cambtn').forEach((b, i) => b.classList.toggle('active', i === G.cam));
-  $('act-flash').textContent = t('mon_flash');
-  $('act-audio').textContent = t('mon_audio');
-  $('act-program').textContent = t('mon_program');
+  $('act-flash').textContent = keyHint(t('mon_flash'));
+  $('act-audio').textContent = keyHint(t('mon_audio'));
+  $('act-program').textContent = keyHint(t('mon_program'));
   $('mon-close').textContent = t('mon_close');
+  $('mon-pause').textContent = t('mon_pause');
   $('act-flash').style.display = G.monitorUnlocked ? 'inline-block' : 'none';
   $('act-audio').style.display = G.audioUnlocked ? 'inline-block' : 'none';
   $('act-program').style.display = G.programUnlocked ? 'inline-block' : 'none';
 }
+
+export function resetCooldowns() { flashCd = 0; audioCd = 0; programCd = 0; burstT = 0; }
 
 export function flashAction() {
   if (!G.monitorUp || flashCd > 0) return;
   flashCd = 2.5;
   flashFx('#ffffff', 140);
   SFX.buzz(0.25, 0.12);
-  const hit = CH.foxy && CH.foxy.flash(G.cam);
+  const hit = CH.foxy && CH.foxy.flash(activeCamera());
   if (!hit) subtitle(t('sub_flashMiss'), 2.5);
 }
 
@@ -121,15 +131,19 @@ export function audioAction() {
   if (!G.monitorUp || audioCd > 0 || !G.audioUnlocked) return;
   audioCd = 6;
   SFX.lure();
-  const hit = CH.freddy && CH.freddy.audio(G.cam);
-  if (!hit) subtitle(t('sub_freddyWrong'), 3);
+  const hit = CH.freddy && CH.freddy.audio(activeCamera());
+  if (hit === 'home') subtitle(t('sub_freddyHome'), 3);
+  else if (!hit) subtitle(t('sub_freddyWrong'), 3);
 }
 
 export function programAction() {
   if (!G.monitorUp || programCd > 0 || !G.programUnlocked) return;
   programCd = 3;
-  const hit = CH.endo && CH.endo.program(G.cam);
-  if (!hit) {
+  const hit = CH.endo && CH.endo.program(activeCamera());
+  if (hit === 'home') {
+    SFX.beep(false);
+    subtitle(t('sub_endoHome'), 3);
+  } else if (!hit) {
     SFX.beep(false);
     subtitle(t('sub_progFail'), 3);
   }

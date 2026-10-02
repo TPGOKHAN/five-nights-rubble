@@ -8,7 +8,9 @@ let heartbeatTimer = null;
 
 export function initAudio() {
   if (ctx) { ctx.resume(); return; }
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return; // no Web Audio: the game runs silent rather than not at all
+  try { ctx = new AC(); } catch (e) { ctx = null; return; }
   master = ctx.createGain();
   master.gain.value = volume * 0.8;
   master.connect(ctx.destination);
@@ -21,8 +23,8 @@ export function setVolume(v) {
   if (master) master.gain.value = volume * 0.8;
 }
 
-export function suspendAudio() { if (ctx) ctx.suspend(); }
-export function resumeAudio() { if (ctx) ctx.resume(); }
+export function suspendAudio() { if (ctx) ctx.suspend().catch(() => {}); }
+export function resumeAudio() { if (ctx) ctx.resume().catch(() => {}); }
 
 // danger level 0..1: heart beats faster and louder as threats close in
 export function setDanger(level) { danger = Math.max(0, Math.min(1, level)); }

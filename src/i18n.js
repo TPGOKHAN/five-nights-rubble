@@ -6,6 +6,7 @@ export let lang = 'en';
 export function setLang(l) {
   lang = l === 'tr' ? 'tr' : 'en';
   document.documentElement.lang = lang;
+  document.title = t('doc_title');
 }
 
 export function t(key, ...args) {
@@ -32,10 +33,8 @@ const STR = {
     btnAchievements: 'ACHIEVEMENTS',
     btnSettings: 'SETTINGS',
     btnStartNight: (n) => 'START NIGHT ' + n,
-    btnBeginNight1: 'BEGIN NIGHT 1',
     btnRetry: (n) => 'TRY NIGHT ' + n + ' AGAIN',
     btnNight: (n) => 'NIGHT ' + n,
-    btnAgain: 'PLAY AGAIN',
     btnBack: 'BACK',
     newGameConfirm: 'Starting a new game erases your current progress (unlocked night ' +
       '%N). Continue?',
@@ -66,7 +65,7 @@ const STR = {
     brief5: `<h2>NIGHT 5 &mdash; THE SKELETON</h2>
       <p>Last night. They are all faster, all angrier. And something else woke up in Parts &amp; Service &mdash; a bare <b>endoskeleton</b>. No suit. No eyes that need light. <em>It sees in the dark.</em></p>
       <p class="tip">&#9656; Find ENDO-01 on the cameras and press <b>PROGRAM</b> (or P) to order it back to Parts &amp; Service.<br>
-      &#9656; You've wired a <b>CONTROLLED SHOCK [X]</b>: stuns every animatronic for 60 seconds. Long recharge.<br>
+      &#9656; You've wired a <b>CONTROLLED SHOCK [X]</b>: stuns every animatronic for 60 seconds. The battery holds <b>two charges</b> — spend them well.<br>
       &#9656; Survive until dawn. They're coming at first light.</p>`,
 
     dirLeft: 'to your LEFT',
@@ -116,7 +115,7 @@ const STR = {
     end_custom_hint: 'CUSTOM NIGHT unlocked in the main menu.',
 
     cn_title: 'CUSTOM NIGHT',
-    cn_desc: 'Set each animatronic\'s aggression (0 = off, 10 = merciless). All tools are unlocked: monitor, audio, program, shock — and 10 food.',
+    cn_desc: 'Set each animatronic\'s aggression (0 = off, 10 = merciless). All tools are unlocked: monitor, audio, program, two shock charges — and 10 food.',
     cn_start: 'START CUSTOM NIGHT',
     cn_result_win: 'CUSTOM NIGHT SURVIVED',
     cn_result_body: 'The sun rises on your own private nightmare.',
@@ -138,7 +137,6 @@ const STR = {
     set_off: 'OFF',
 
     ach_title: 'ACHIEVEMENTS',
-    ach_locked: '???',
     achName_night1: 'First Dawn', achDesc_night1: 'Survive Night 1.',
     achName_night3: 'Halfway Home', achDesc_night3: 'Survive Night 3.',
     achName_win: 'Rescued', achDesc_win: 'Survive all five nights.',
@@ -156,20 +154,35 @@ const STR = {
     hud_night: (n) => 'NIGHT ' + n,
     hud_custom: 'CUSTOM NIGHT',
     hud_food: (n) => '🍕 FOOD × ' + n,
-    hud_shock_ready: '⚡ SHOCK READY [X]',
-    hud_shock_cd: (s) => '⚡ SHOCK RECHARGING ' + s + 's',
+    hud_shock: (n) => '⚡ SHOCK ×' + n + ' [X]',
+    hud_shock_empty: '⚡ SHOCK SPENT',
     hud_stun: (s) => 'SYSTEMS STUNNED ' + s + 's',
     hud_cams: '▲ CAMERAS ▲',
     hud_torch_on: '🔦 ON',
     hud_torch_off: '🔦 OFF',
-    hint_lock: 'Click the screen to look around',
+    hint_lock: 'Click to take control of the view — or drag to look around',
 
     mon_flash: '⚡ FLASH [F]',
     mon_audio: '♪ AUDIO [Q]',
     mon_program: '▚ PROGRAM [P]',
     mon_close: '▼ CLOSE ▼',
 
-    tch_torch: '🔦', tch_feed: '🍕', tch_cams: '📹', tch_shock: '⚡'
+    mon_pause: '❚❚ PAUSE',
+    sub_shockEmpty: 'The shock rig is dead. No charges left tonight.',
+    sub_freddyHome: 'The bear is already on the stage. The jingle changes nothing.',
+    sub_endoHome: '> ENDO-01 ALREADY DOCKED IN PARTS/SERVICE',
+    deathTip_bonnie: 'The rabbit hates light. When servos whir close, keep your beam on its EYES until it recoils.',
+    deathTip_chica: 'Light OFF, then F — she has to eat without seeing you. Your beam on her makes her come faster.',
+    deathTip_foxy: 'Check Pirate Cove often. The moment you hear sprinting, find the fox on a camera and FLASH it.',
+    deathTip_freddy: 'Find the bear on the cameras and play AUDIO on his feed. Keep pushing him back all night.',
+    deathTip_endo: 'ENDO-01 sees in the dark. Find it on a camera and PROGRAM it home — or spend a SHOCK.',
+    ctl_look: 'MOUSE look',
+    ctl_torch: 'SPACE / CLICK light',
+    ctl_feed: 'F feed',
+    ctl_cams: 'TAB / RIGHT-CLICK cameras',
+    ctl_shock: 'X shock',
+    ctl_pause: 'ESC / P pause',
+    doc_title: 'Five Nights in the Rubble'
   },
 
   // ---------------------------------------------------------------- TURKISH
@@ -188,10 +201,8 @@ const STR = {
     btnAchievements: 'BAŞARIMLAR',
     btnSettings: 'AYARLAR',
     btnStartNight: (n) => n + '. GECEYİ BAŞLAT',
-    btnBeginNight1: '1. GECEYE BAŞLA',
     btnRetry: (n) => n + '. GECEYİ TEKRAR DENE',
     btnNight: (n) => n + '. GECE',
-    btnAgain: 'TEKRAR OYNA',
     btnBack: 'GERİ',
     newGameConfirm: 'Yeni oyun başlatmak mevcut ilerlemeni siler (açılan gece: %N). Devam edilsin mi?',
 
@@ -221,7 +232,7 @@ const STR = {
     brief5: `<h2>5. GECE &mdash; İSKELET</h2>
       <p>Son gece. Hepsi daha hızlı, hepsi daha öfkeli. Ve Parça &amp; Servis'te başka bir şey uyandı &mdash; çıplak bir <b>endoskelet</b>. Kostümü yok. Işık isteyen gözleri yok. <em>Karanlıkta görüyor.</em></p>
       <p class="tip">&#9656; ENDO-01'i kameralarda bul ve <b>PROGRAM</b>'a (veya P) basarak Parça &amp; Servis'e geri gönder.<br>
-      &#9656; Bir <b>KONTROLLÜ ŞOK [X]</b> düzeneği kurdun: tüm animatronikleri 60 saniye sersemletir. Şarjı uzun sürer.<br>
+      &#9656; Bir <b>KONTROLLÜ ŞOK [X]</b> düzeneği kurdun: tüm animatronikleri 60 saniye sersemletir. Akü yalnızca <b>iki şarj</b> taşıyor — iyi kullan.<br>
       &#9656; Şafağa kadar hayatta kal. Gün ışığıyla birlikte geliyorlar.</p>`,
 
     dirLeft: 'SOLUNDA',
@@ -271,7 +282,7 @@ const STR = {
     end_custom_hint: 'Ana menüde ÖZEL GECE açıldı.',
 
     cn_title: 'ÖZEL GECE',
-    cn_desc: 'Her animatroniğin saldırganlığını ayarla (0 = kapalı, 10 = acımasız). Tüm araçlar açık: monitör, ses, program, şok — ve 10 yiyecek.',
+    cn_desc: 'Her animatroniğin saldırganlığını ayarla (0 = kapalı, 10 = acımasız). Tüm araçlar açık: monitör, ses, program, iki şok şarjı — ve 10 yiyecek.',
     cn_start: 'ÖZEL GECEYİ BAŞLAT',
     cn_result_win: 'ÖZEL GECE ATLATILDI',
     cn_result_body: 'Güneş, kendi ellerinle kurduğun kâbusun üzerine doğuyor.',
@@ -293,7 +304,6 @@ const STR = {
     set_off: 'KAPALI',
 
     ach_title: 'BAŞARIMLAR',
-    ach_locked: '???',
     achName_night1: 'İlk Şafak', achDesc_night1: '1. geceyi atlat.',
     achName_night3: 'Yolun Yarısı', achDesc_night3: '3. geceyi atlat.',
     achName_win: 'Kurtarıldın', achDesc_win: 'Beş gecenin hepsini atlat.',
@@ -311,20 +321,35 @@ const STR = {
     hud_night: (n) => n + '. GECE',
     hud_custom: 'ÖZEL GECE',
     hud_food: (n) => '🍕 YİYECEK × ' + n,
-    hud_shock_ready: '⚡ ŞOK HAZIR [X]',
-    hud_shock_cd: (s) => '⚡ ŞOK ŞARJ OLUYOR ' + s + ' sn',
+    hud_shock: (n) => '⚡ ŞOK ×' + n + ' [X]',
+    hud_shock_empty: '⚡ ŞOK BİTTİ',
     hud_stun: (s) => 'SİSTEMLER SERSEMLEDİ ' + s + ' sn',
     hud_cams: '▲ KAMERALAR ▲',
     hud_torch_on: '🔦 AÇIK',
     hud_torch_off: '🔦 KAPALI',
-    hint_lock: 'Etrafa bakmak için ekrana tıkla',
+    hint_lock: 'Görüşü kontrol etmek için tıkla — ya da sürükleyerek bak',
 
     mon_flash: '⚡ FLAŞ [F]',
     mon_audio: '♪ SES [Q]',
     mon_program: '▚ PROGRAM [P]',
     mon_close: '▼ KAPAT ▼',
 
-    tch_torch: '🔦', tch_feed: '🍕', tch_cams: '📹', tch_shock: '⚡'
+    mon_pause: '❚❚ DURAKLAT',
+    sub_shockEmpty: 'Şok düzeneği tükendi. Bu gece hiç şarj kalmadı.',
+    sub_freddyHome: 'Ayı zaten sahnede. Melodi hiçbir şeyi değiştirmiyor.',
+    sub_endoHome: '> ENDO-01 ZATEN PARÇA/SERVİS\'TE',
+    deathTip_bonnie: 'Tavşan ışıktan nefret eder. Servo sesleri yaklaşınca fenerini geri çekilene kadar GÖZLERİNDE tut.',
+    deathTip_chica: 'Önce ışığı KAPAT, sonra F — seni görmeden yemeli. Işığın üzerindeyse daha hızlı gelir.',
+    deathTip_foxy: 'Korsan Koyu\'nu sık kontrol et. Koşu sesini duyduğun an tilkiyi bir kamerada bul ve FLAŞLA.',
+    deathTip_freddy: 'Ayıyı kameralarda bul ve onun görüntüsünde SES çal. Bütün gece onu geri itmeye devam et.',
+    deathTip_endo: 'ENDO-01 karanlıkta görür. Onu bir kamerada bulup PROGRAMLA — ya da bir ŞOK harca.',
+    ctl_look: 'FARE bak',
+    ctl_torch: 'BOŞLUK / TIK fener',
+    ctl_feed: 'F besle',
+    ctl_cams: 'TAB / SAĞ TIK kameralar',
+    ctl_shock: 'X şok',
+    ctl_pause: 'ESC / P duraklat',
+    doc_title: 'Enkazda Beş Gece'
   }
 };
 

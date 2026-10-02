@@ -27,8 +27,12 @@ export function loadSave() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const data = JSON.parse(raw);
+      const defaults = JSON.parse(JSON.stringify(save));
       Object.assign(save, data);
-      save.stats = Object.assign({ deathsBy: {} }, save.stats, data.stats || {});
+      save.stats = Object.assign(defaults.stats, data.stats || {});
+      save.foodAtNight = Object.assign({ 1: 10 }, data.foodAtNight || {});
+      save.achievements = data.achievements || {};
+      save.unlockedNight = Math.min(5, Math.max(1, Number(save.unlockedNight) || 1));
     }
   } catch (e) { /* keep defaults */ }
   return save;
@@ -80,11 +84,20 @@ export function bump(stat) {
   persist();
 }
 
-export function recordDeath(killerName) {
+export function recordDeath(killerName, isCustom = false) {
   save.stats.deaths++;
   save.stats.deathsBy[killerName] = (save.stats.deathsBy[killerName] || 0) + 1;
-  save.runDeaths++;
+  // only campaign deaths spoil the "Untouchable" (no-death) run
+  if (!isCustom) save.runDeaths++;
   if (save.stats.deaths >= 10) unlock('deaths');
+  persist();
+}
+
+// restarting or quitting mid-night dodges a death; for the no-death
+// achievement it counts as one
+export function recordAbandon(isCustom) {
+  if (isCustom) return;
+  save.runDeaths++;
   persist();
 }
 
